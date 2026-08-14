@@ -77,6 +77,7 @@ function normalizePlayer(id: number, rawPlayer: RawPlayer): Player {
     ...rawPlayer,
     ca: toFmAbility(rawPlayer.ca),
     pa: toFmAbility(rawPlayer.pa),
+    wage: Math.max(500, Math.round(rawPlayer.wage / 20)),
     attrs: convertAttrs(rawPlayer.attrs, id, rawPlayer.name, rawPlayer.skillMoves),
     personality: generatePersonality(id, rawPlayer.name),
   };

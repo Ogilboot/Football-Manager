@@ -226,6 +226,7 @@ export interface PlayerState {
   yellowCards: number;
   training: keyof PlayerAttrs | null;
   seasonMinutes: number;
+  wantsTransfer: boolean;
 }
 
 export interface PlayerOverrides {
@@ -256,6 +257,11 @@ export interface BoardObjective {
   targetPos: number;
   description: string;
   status: "pending" | "met" | "failed";
+}
+
+export interface Contract {
+  expirySeason: number;
+  wage: number;
 }
 
 // ---- Runtime state -------------------------------------------------------
@@ -316,6 +322,7 @@ export interface CareerState {
   startedAt: string;
   date: string;
   seasonStartYear: number;
+  dayOfWeek: number;
   userClubId: number;
   balance: number;
   wageBudget: number;
@@ -337,6 +344,7 @@ export interface CareerState {
   competitions: Record<string, CompetitionInfo>;
   reputation: number;
   boardObjective: BoardObjective;
+  contracts: Record<number, Contract>;
   tactics: TeamTactics;
   matchLogs: Record<string, MatchLog>;
 }

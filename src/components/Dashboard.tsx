@@ -1,5 +1,5 @@
 import { db } from "../game/data";
-import { boardConfidence, fixturesFor, leagueStandings, nextUserFixture, squadWages, teamRecentForm } from "../game/career";
+import { boardConfidence, fixturesFor, leagueStandings, nextUserFixture, teamRecentForm, weeklyIncome, weeklyWages } from "../game/career";
 import { formatMoney, formatWage } from "../game/format";
 import type { CareerState, MatchResult } from "../game/types";
 import { FormDots } from "./ui";
@@ -22,7 +22,7 @@ export function Dashboard({ career, onPlay }: Props) {
   const opponent = next ? db.teamById.get(next.homeId === clubId ? next.awayId : next.homeId)! : null;
   const home = next ? next.homeId === clubId : false;
 
-  const wages = squadWages(career.squads, clubId);
+  const wages = weeklyWages(career);
   const fixtures = fixturesFor(career, clubId);
   const played = fixtures.filter((f) => career.results[f.id]).sort((a, b) => b.stage - a.stage).slice(0, 5);
   const upcoming = fixtures.filter((f) => !career.results[f.id]).sort((a, b) => a.stage - b.stage).slice(0, 5);
@@ -52,6 +52,10 @@ export function Dashboard({ career, onPlay }: Props) {
           <div className="stat">
             <span className="k">Reputation</span>
             <span className="v" style={{ fontSize: 15 }}>{career.reputation}</span>
+          </div>
+          <div className="stat">
+            <span className="k">Weekly income / wages</span>
+            <span className="v" style={{ fontSize: 15 }}>{formatMoney(weeklyIncome(career))} / {formatWage(wages)}</span>
           </div>
         </div>
       </div>

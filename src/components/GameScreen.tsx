@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { db } from "../game/data";
-import { advanceWeek, clearLatestIntake, finishSeason, markAllNewsRead, startNextSeason, userPosition } from "../game/career";
+import { advance, clearLatestIntake, finishSeason, markAllNewsRead, startNextSeason, userPosition } from "../game/career";
 import { formatDate, formatMoney } from "../game/format";
 import type { CareerState, MatchdayReport } from "../game/types";
 import type { MatchLog } from "../game/matchTypes";
@@ -54,10 +54,12 @@ export function GameScreen({ career, apply, onExit }: Props) {
 
   const playNext = () => {
     if (career.seasonOver) return;
-    const { state, report: r } = advanceWeek(career);
+    const { state, report: r } = advance(career);
     apply(state);
-    setReport(r);
-    setWatchLog(r.userLog);
+    if (r) {
+      setReport(r);
+      setWatchLog(r.userLog);
+    }
   };
 
   return (

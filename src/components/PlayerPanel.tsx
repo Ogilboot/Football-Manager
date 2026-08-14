@@ -1,5 +1,6 @@
+import { moraleLabel } from "../game/career";
 import { formatMoney, formatWage } from "../game/format";
-import type { Player, PlayerAttrs, PlayerState } from "../game/types";
+import type { Contract, Player, PlayerAttrs, PlayerState } from "../game/types";
 import { CategoryBadge, RatingDots } from "./ui";
 
 const TRAINABLE: [keyof PlayerAttrs, string][] = [
@@ -87,7 +88,16 @@ const PERSONALITY_LABELS: [keyof Player["personality"], string][] = [
   ["adaptability", "Adaptability"],
 ];
 
-export function PlayerPanel({ player, state, onSetTraining }: { player: Player; state?: PlayerState; onSetTraining?: (focus: keyof PlayerAttrs | null) => void }) {
+export function PlayerPanel({ player, state, onSetTraining, contract, seasonYear, onRenew, happiness, onInteract }: {
+  player: Player;
+  state?: PlayerState;
+  onSetTraining?: (focus: keyof PlayerAttrs | null) => void;
+  contract?: Contract;
+  seasonYear?: number;
+  onRenew?: () => void;
+  happiness?: string[];
+  onInteract?: (kind: "praise" | "encourage" | "criticize") => void;
+}) {
   const isGK = player.category === "GK";
   const groups = isGK ? GROUPS : GROUPS.filter((g) => g.title !== "Goalkeeping");
   const trainable = TRAINABLE.filter(([k]) =>
@@ -132,17 +142,42 @@ export function PlayerPanel({ player, state, onSetTraining }: { player: Player; 
         </div>
       )}
 
+      {contract && onRenew && (
+        <div className="banner" style={{ marginBottom: 16 }}>
+          <div className="msg">
+            <div className="small muted">Contract</div>
+            <div>Expires {contract.expirySeason} · {formatWage(contract.wage)}</div>
+            {seasonYear != null && contract.expirySeason <= seasonYear + 1 && <div className="small" style={{ color: "var(--warn)" }}>Expiring soon</div>}
+          </div>
+          <button className="btn primary" onClick={onRenew}>Renew</button>
+        </div>
+      )}
+
       {state && (
         <div style={{ marginBottom: 16 }}>
           <div className="panel-title" style={{ marginBottom: 6 }}>Match Fitness</div>
           <PctBar label="Condition" value={state.condition} />
           <PctBar label="Match sharpness" value={state.matchSharpness} />
           <PctBar label="Fitness" value={state.fitness} />
-          <AttrBar label="Morale" value={state.morale} />
+          <AttrBar label={`Morale (${state ? moraleLabel(state.morale) : "—"})`} value={state.morale} />
           <div className="small muted" style={{ marginTop: 4, display: "flex", alignItems: "center", gap: 6 }}>
             Form: <RatingDots form={state.form} />
             {state.yellowCards > 0 && <> · {state.yellowCards} yellow cards this season</>}
           </div>
+        </div>
+      )}
+
+      {state && happiness && happiness.length > 0 && (
+        <div className="panel" style={{ marginBottom: 16, padding: "12px 16px" }}>
+          <div className="panel-title" style={{ marginBottom: 6 }}>Happiness</div>
+          {happiness.map((r, i) => <div key={i} className="small muted">· {r}</div>)}
+          {onInteract && (
+            <div className="btn-row" style={{ marginTop: 8 }}>
+              <button className="btn small" onClick={() => onInteract("praise")}>Praise</button>
+              <button className="btn small" onClick={() => onInteract("encourage")}>Encourage</button>
+              <button className="btn small" onClick={() => onInteract("criticize")}>Criticize</button>
+            </div>
+          )}
         </div>
       )}
 

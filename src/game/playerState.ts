@@ -16,6 +16,7 @@ export function defaultPlayerState(): PlayerState {
     yellowCards: 0,
     training: null,
     seasonMinutes: 0,
+    wantsTransfer: false,
   };
 }
 
@@ -100,6 +101,7 @@ function applyWeeklyRecovery(after: Record<number, PlayerState>, ids: number[], 
     ps.matchSharpness = clamp(ps.matchSharpness - 5, 0, 100);
     ps.injuryDaysLeft = Math.max(0, ps.injuryDaysLeft - 7);
     ps.injured = ps.injuryDaysLeft > 0;
+    ps.morale = clamp(ps.morale + (ps.morale < 12 ? 1 : ps.morale > 12 ? -1 : 0), 1, 20);
     if ((pre[id]?.suspended ?? 0) > 0) ps.suspended = Math.max(0, ps.suspended - 1);
     next[id] = ps;
   }

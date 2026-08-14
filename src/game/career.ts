@@ -10,11 +10,11 @@ import { computeStandings } from "./standings";
 import { teamStrength } from "./strength";
 import { aiPickTactics, buildMatchSquad } from "./teamSelection";
 import type { MatchContext, MatchEvent, MatchLog } from "./matchTypes";
-import type { BoardObjective, CareerState, Category, CompetitionInfo, Fixture, MatchResult, MatchdayReport, NewsItem, Player, PlayerAttrs, PlayerOverrides, SeasonStats, TeamTactics } from "./types";
+import type { BoardObjective, CareerState, Category, CompetitionInfo, Contract, Fixture, MatchResult, MatchdayReport, NewsItem, Player, PlayerAttrs, PlayerOverrides, SeasonStats, TeamTactics } from "./types";
 
 export { defaultPlayerState, getPlayerState } from "./playerState";
 
-export const GAME_VERSION = 13;
+export const GAME_VERSION = 16;
 const START_DATE = "2025-08-16";
 const SAVE_KEY = "fm25_career";
 
@@ -61,6 +61,103 @@ export function boardConfidence(reputation: number): string {
   if (reputation >= 45) return "Satisfied";
   if (reputation >= 30) return "Concerned";
   return "Under pressure";
+}
+
+// ---- contracts & finances -------------------------------------------------
+
+export function getContract(state: CareerState, id: number): Contract {
+  return state.contracts[id] ?? { expirySeason: state.seasonStartYear + 3, wage: getPlayer(id).wage };
+}
+
+export function weeklyWages(state: CareerState): number {
+  return (state.squads[state.userClubId] ?? []).reduce((s, id) => s + getContract(state, id).wage, 0);
+}
+
+export function weeklyIncome(state: CareerState): number {
+  const strength = teamStrength(state.squads[state.userClubId] ?? [], (id) => getPlayerCurrent(state, id).ca);
+  return Math.round(strength * 14_000);
+}
+
+export interface ContractOutcome {
+  ok: boolean;
+  message: string;
+  state: CareerState;
+}
+
+export function renewContract(state: CareerState, playerId: number): ContractOutcome {
+  const contract = getContract(state, playerId);
+  const p = getPlayerCurrent(state, playerId);
+  const asking = Math.max(contract.wage, Math.round(p.ca * 2000));
+  const renewed: Contract = { expirySeason: state.seasonStartYear + 4, wage: asking };
+  return {
+    ok: true,
+    message: `${p.name} signed until ${renewed.expirySeason} (${asking.toLocaleString("en-GB")}/wk)`,
+    state: { ...state, contracts: { ...state.contracts, [playerId]: renewed } },
+  };
+}
+
+function applyWeeklyFinance(state: CareerState): CareerState {
+  const income = weeklyIncome(state);
+  const wages = weeklyWages(state);
+  return { ...state, balance: state.balance + income - wages };
+}
+
+// ---- morale & interactions -------------------------------------------------
+
+export function moraleLabel(morale: number): string {
+  if (morale >= 17) return "Superb";
+  if (morale >= 15) return "Very Good";
+  if (morale >= 13) return "Good";
+  if (morale >= 11) return "Okay";
+  if (morale >= 8) return "Poor";
+  if (morale >= 5) return "Very Poor";
+  return "Abysmal";
+}
+
+export function happinessReasons(state: CareerState, id: number): string[] {
+  const ps = getPlayerState(state, id);
+  const p = getPlayerCurrent(state, id);
+  const reasons: string[] = [];
+  if (p.ca >= 140 && ps.seasonMinutes < 400) reasons.push("Wants more playing time");
+  if (ps.form.length && ps.form.reduce((a, b) => a + b, 0) / ps.form.length < 6.3) reasons.push("Unhappy with recent form");
+  if (getContract(state, id).expirySeason <= state.seasonStartYear + 1) reasons.push("Concerned about their contract");
+  if (ps.wantsTransfer) reasons.push("Wants to leave the club");
+  if (!reasons.length) reasons.push(ps.morale >= 13 ? "Happy with life at the club" : "Content");
+  return reasons;
+}
+
+export function interactWithPlayer(state: CareerState, id: number, kind: "praise" | "encourage" | "criticize"): { state: CareerState; message: string } {
+  const ps = getPlayerState(state, id);
+  const p = getPlayerCurrent(state, id);
+  const delta = kind === "praise" ? 2 : kind === "encourage" ? 1 : -1;
+  const morale = Math.max(1, Math.min(20, ps.morale + delta));
+  const message = kind === "praise"
+    ? `${p.name} responded well to your praise.`
+    : kind === "encourage"
+      ? `${p.name} appreciated the encouragement.`
+      : `${p.name} took your criticism on board.`;
+  return { state: { ...state, playerStates: { ...state.playerStates, [id]: { ...ps, morale } } }, message };
+}
+
+function weeklyMoraleUpdate(state: CareerState, playedBefore: Map<number, number>): CareerState {
+  const squad = state.squads[state.userClubId] ?? [];
+  let playerStates = state.playerStates;
+  let inbox = state.inbox;
+  for (const id of squad) {
+    const p = getPlayerCurrent(state, id);
+    const ps = getPlayerState(state, id);
+    let morale = ps.morale;
+    let wantsTransfer = ps.wantsTransfer;
+    if (p.ca >= 140 && ps.seasonMinutes === (playedBefore.get(id) ?? 0)) morale = Math.max(1, morale - 1);
+    if (morale <= 5 && !wantsTransfer) {
+      wantsTransfer = true;
+      inbox = [makeNews(state.date, "info", `${p.name} requests a transfer`, `${p.name} is unhappy and has asked to leave the club.`), ...inbox];
+    }
+    if (morale !== ps.morale || wantsTransfer !== ps.wantsTransfer) {
+      playerStates = { ...playerStates, [id]: { ...ps, morale, wantsTransfer } };
+    }
+  }
+  return { ...state, playerStates, inbox };
 }
 
 // ---- competitions ----------------------------------------------------------
@@ -198,6 +295,7 @@ export function newCareer(clubId: number, saveName: string): CareerState {
     startedAt: new Date().toISOString(),
     date: START_DATE,
     seasonStartYear: year,
+    dayOfWeek: 6,
     userClubId: clubId,
     balance: startingBudget(clubId),
     wageBudget: Math.round(squadWages(squads, clubId) * 1.1),
@@ -221,6 +319,7 @@ export function newCareer(clubId: number, saveName: string): CareerState {
     ],
     reputation: 50,
     boardObjective: boardObjectiveFor(teamStrength(db.squadOf.get(clubId) ?? [], (id) => getPlayer(id).ca), teamIds.length),
+    contracts: {},
     tactics,
     matchLogs: {},
   };
@@ -289,7 +388,7 @@ function matchResultFromLog(log: MatchLog): MatchResult {
   };
 }
 
-export function advanceWeek(state: CareerState): { state: CareerState; report: MatchdayReport } {
+function playMatchday(state: CareerState): { state: CareerState; report: MatchdayReport } {
   if (state.seasonOver) return { state, report: { stage: state.nextStage, date: state.date, results: [], userResult: null, userLog: null } };
 
   const stage = state.nextStage;
@@ -405,12 +504,58 @@ export function advanceWeek(state: CareerState): { state: CareerState; report: M
     seasonStats,
     inbox,
     nextStage: stage + 1,
-    date: addDays(state.date, 7),
     balance: state.balance,
     seasonOver: stage + 1 > state.totalStages,
   };
   const next = advanceCompetitions(base);
   return { state: next, report: { stage, date: state.date, results: played, userResult, userLog } };
+}
+
+const MATCHDAY = 0;
+
+function dailyNews(state: CareerState, dayOfWeek: number): NewsItem | null {
+  const club = db.teamById.get(state.userClubId)!;
+  const next = nextUserFixture(state);
+  const opp = next ? db.teamById.get(next.homeId === state.userClubId ? next.awayId : next.homeId) : null;
+
+  if (dayOfWeek === 6 && next && opp) {
+    return makeNews(state.date, "info", `Match preview: ${club.name} vs ${opp.name}`, `${club.name} face ${opp.name} tomorrow.`);
+  }
+
+  const squad = state.squads[state.userClubId] ?? [];
+  if (squad.length) {
+    const idx = hashString(`${state.date}-${dayOfWeek}`) % squad.length;
+    const p = getPlayer(squad[idx]);
+    const kind = hashString(`${state.date}-${dayOfWeek}-flavor`) % 4;
+    if (kind === 0) return makeNews(state.date, "info", `${p.name} impressing in training`, `Coaching staff have praised ${p.name}'s recent form.`);
+    if (kind === 1) return makeNews(state.date, "info", `${p.name} linked with a move`, `Reports suggest ${p.name} is attracting transfer interest.`);
+    if (kind === 2) return makeNews(state.date, "info", "Board statement", "The board is monitoring the club's progress closely.");
+    return makeNews(state.date, "info", "Supporters' view", "Fans are optimistic about the season ahead.");
+  }
+  return null;
+}
+
+export function advanceWeek(state: CareerState): { state: CareerState; report: MatchdayReport } {
+  const { state: played, report } = playMatchday(state);
+  if (played === state) return { state, report };
+  return { state: { ...played, date: addDays(state.date, 7) }, report };
+}
+
+export function advance(state: CareerState): { state: CareerState; report: MatchdayReport | null } {
+  if (state.seasonOver) return { state, report: null };
+  const dayOfWeek = (state.dayOfWeek + 1) % 7;
+  const date = addDays(state.date, 1);
+  if (dayOfWeek === MATCHDAY) {
+    const playedBefore = new Map((state.squads[state.userClubId] ?? []).map((id) => [id, getPlayerState(state, id).seasonMinutes]));
+    const { state: played, report } = playMatchday(state);
+    const updated = weeklyMoraleUpdate(played, playedBefore);
+    return { state: { ...applyWeeklyFinance(updated), date, dayOfWeek }, report };
+  }
+  const item = dailyNews(state, dayOfWeek);
+  return {
+    state: { ...state, date, dayOfWeek, inbox: item ? [item, ...state.inbox] : state.inbox },
+    report: null,
+  };
 }
 
 // ---- transfers ------------------------------------------------------------
@@ -721,7 +866,7 @@ function generateYouthPlayer(rng: Rng, id: number, ca: number): Player {
     ca,
     pa,
     value: Math.round(Math.max(0, ca - 40) ** 2 * 1500),
-    wage: Math.max(400, Math.round(ca * 500)),
+    wage: Math.max(400, Math.round(ca * 200)),
     attrs,
     personality: generatePersonality(id, name),
   };
@@ -752,7 +897,12 @@ export function startNextSeason(state: CareerState): CareerState {
   const generatedPlayers = { ...finished.generatedPlayers };
   const intakeIds: number[] = [];
   let nextId = finished.nextPlayerId;
-  const squad = [...(finished.squads[finished.userClubId] ?? [])];
+  const rawSquad = finished.squads[finished.userClubId] ?? [];
+  const leavers = rawSquad.filter((id) => getContract(finished, id).expirySeason <= year);
+  const squad = rawSquad.filter((id) => !leavers.includes(id));
+  const expiryNews = leavers.map((id) =>
+    makeNews(START_DATE, "transfer", `${getPlayer(id).name} left the club`, `${getPlayer(id).name}'s contract expired and they departed on a free transfer.`),
+  );
   for (let i = 0; i < 3; i++) {
     const ca = 40 + Math.floor(rng() * 25) + Math.max(0, Math.round((strength - 140) / 4));
     const id = nextId++;
@@ -767,6 +917,7 @@ export function startNextSeason(state: CareerState): CareerState {
     ...finished,
     seasonStartYear: year,
     date: START_DATE,
+    dayOfWeek: 6,
     fixtures,
     competitions,
     results: {},
@@ -781,7 +932,7 @@ export function startNextSeason(state: CareerState): CareerState {
     nextPlayerId: nextId,
     latestIntake: intakeIds,
     squads: { ...finished.squads, [finished.userClubId]: squad },
-    inbox: [makeNews(START_DATE, "intake", "New youth intake", `${intakeIds.length} youth prospects have joined the academy squad.`), ...finished.inbox],
+    inbox: [makeNews(START_DATE, "intake", "New youth intake", `${intakeIds.length} youth prospects have joined the academy squad.`), ...expiryNews, ...finished.inbox],
   };
 }
 
