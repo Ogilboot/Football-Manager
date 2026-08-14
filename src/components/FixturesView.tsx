@@ -1,5 +1,5 @@
 import { db } from "../game/data";
-import { fixturesFor } from "../game/career";
+import { competitionName, fixturesFor } from "../game/career";
 import type { CareerState, MatchResult } from "../game/types";
 
 function letter(res: MatchResult, clubId: number): "W" | "D" | "L" {
@@ -14,7 +14,7 @@ interface Props {
 
 export function FixturesView({ career }: Props) {
   const clubId = career.userClubId;
-  const fixtures = fixturesFor(career, clubId).sort((a, b) => a.stage - b.stage);
+  const fixtures = fixturesFor(career, clubId).sort((a, b) => a.stage - b.stage || a.competition.localeCompare(b.competition));
 
   return (
     <div className="panel">
@@ -22,7 +22,8 @@ export function FixturesView({ career }: Props) {
       <table className="table">
         <thead>
           <tr>
-            <th className="num">MD</th>
+            <th className="num">Stage</th>
+            <th>Comp</th>
             <th>Opponent</th>
             <th className="num">H/A</th>
             <th className="num">Score</th>
@@ -37,6 +38,7 @@ export function FixturesView({ career }: Props) {
             return (
               <tr key={f.id} className={!res && f.stage === career.nextStage ? "highlight" : ""}>
                 <td className="num dim">{f.stage}</td>
+                <td className="muted">{competitionName(f.competition)}</td>
                 <td>{opp.name}</td>
                 <td className="num dim">{home ? "H" : "A"}</td>
                 <td className="num score">

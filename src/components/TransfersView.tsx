@@ -26,11 +26,12 @@ export function TransfersView({ career, apply }: Props) {
   const clubOf = useMemo(() => buildPlayerClubMap(career), [career]);
 
   const results = useMemo(() => {
-    const list: { id: number; ca: number; value: number; age: number; clubId: number | null; pos: string; cat: string; name: string }[] = [];
+    const list: { id: number; ca: number; pa: number; value: number; age: number; clubId: number | null; pos: string; cat: string; name: string; inSquad: boolean }[] = [];
+    const mySquad = career.squads[career.userClubId] ?? [];
     for (const id of db.players.keys()) {
       const p = getPlayerCurrent(career, id);
       const clubId = clubOf.get(id) ?? null;
-      list.push({ id, ca: p.ca, value: p.value, age: p.age, clubId, pos: p.position, cat: p.category, name: p.name });
+      list.push({ id, ca: p.ca, pa: p.pa, value: p.value, age: p.age, clubId, pos: p.position, cat: p.category, name: p.name, inSquad: mySquad.includes(id) });
     }
     const q = query.trim().toLowerCase();
     const filtered = list.filter((x) => {
@@ -68,7 +69,7 @@ export function TransfersView({ career, apply }: Props) {
       )}
 
       <div className="panel">
-        <div className="panel-title">Transfer market</div>
+        <div className="panel-title">Scouting</div>
         <div className="btn-row" style={{ flexWrap: "wrap", marginBottom: 12 }}>
           <input
             type="text"
@@ -98,7 +99,7 @@ export function TransfersView({ career, apply }: Props) {
           <thead>
             <tr>
               <th>Name</th><th>Pos</th><th>Club</th><th className="num">CA</th>
-              <th className="num">Age</th><th className="num">Value</th><th></th>
+              <th className="num">PA</th><th className="num">Age</th><th className="num">Value</th><th></th>
             </tr>
           </thead>
           <tbody>
@@ -106,12 +107,13 @@ export function TransfersView({ career, apply }: Props) {
               <tr key={x.id} className="row-click" onClick={() => setSelected(x.id)}>
                 <td>{x.name}</td>
                 <td>{x.pos}</td>
-                <td className="dim">{x.clubId != null ? db.teamById.get(x.clubId)!.name : "Free Agent"}</td>
+                <td className="dim">{x.inSquad ? "Your squad" : x.clubId != null ? db.teamById.get(x.clubId)!.name : "Free Agent"}</td>
                 <td className="num"><RatingBadge ca={x.ca} /></td>
+                <td className="num dim">{x.pa}</td>
                 <td className="num">{x.age}</td>
                 <td className="num">{formatMoney(x.value)}</td>
                 <td className="num">
-                  <button className="btn small primary" onClick={(e) => { e.stopPropagation(); doBuy(x.id); }}>
+                  <button className="btn small primary" onClick={(e) => { e.stopPropagation(); doBuy(x.id); }} disabled={x.inSquad}>
                     Buy
                   </button>
                 </td>

@@ -1,7 +1,8 @@
 import { db } from "../game/data";
-import { fixturesFor, leagueStandings, nextUserFixture, squadWages } from "../game/career";
+import { boardConfidence, fixturesFor, leagueStandings, nextUserFixture, squadWages, teamRecentForm } from "../game/career";
 import { formatMoney, formatWage } from "../game/format";
 import type { CareerState, MatchResult } from "../game/types";
+import { FormDots } from "./ui";
 
 function resultLetter(res: MatchResult, clubId: number): "W" | "D" | "L" {
   const gf = res.homeId === clubId ? res.homeGoals : res.awayGoals;
@@ -38,6 +39,23 @@ export function Dashboard({ career, onPlay }: Props) {
         <div className="kpi"><div className="stat"><span className="k">League position</span><span className="v">{standings.findIndex((r) => r.teamId === clubId) + 1}</span></div></div>
       </div>
 
+      <div className="panel" style={{ padding: "12px 16px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+          <div className="stat">
+            <span className="k">Board objective</span>
+            <span className="v" style={{ fontSize: 15 }}>{career.boardObjective.description}</span>
+          </div>
+          <div className="stat">
+            <span className="k">Board confidence</span>
+            <span className="v" style={{ fontSize: 15 }}>{boardConfidence(career.reputation)}</span>
+          </div>
+          <div className="stat">
+            <span className="k">Reputation</span>
+            <span className="v" style={{ fontSize: 15 }}>{career.reputation}</span>
+          </div>
+        </div>
+      </div>
+
       {next && opponent ? (
         <div className="banner">
           <div className="msg">
@@ -45,12 +63,33 @@ export function Dashboard({ career, onPlay }: Props) {
             <div style={{ fontSize: 16, fontWeight: 700 }}>
               {home ? club.name : opponent.name} vs {home ? opponent.name : club.name}
             </div>
+            <div className="small" style={{ marginTop: 4 }}>
+              <span className="muted">Form: </span>
+              <FormDots form={teamRecentForm(career, clubId, 5)} />
+            </div>
           </div>
-          <button className="btn primary" onClick={onPlay}>Play Matchday</button>
+          <button className="btn primary" onClick={onPlay}>Play Match</button>
         </div>
       ) : career.seasonOver ? (
         <div className="banner"><div className="msg"><b>Season complete</b> — review the final table.</div></div>
       ) : null}
+
+      <div className="panel">
+        <div className="panel-title">News</div>
+        {career.inbox.length === 0 ? (
+          <div className="muted">No news.</div>
+        ) : (
+          <div>
+            {career.inbox.slice(0, 5).map((n) => (
+              <div key={n.id} className="news-item">
+                <div className="small muted">{n.date}</div>
+                <div className="news-head">{n.headline}</div>
+                <div className="muted small">{n.body}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       <div className="grid cols-2">
         <div className="panel">

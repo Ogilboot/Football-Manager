@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react";
-import { getPlayerCurrent, releasePlayer, sellPlayer } from "../game/career";
+import { getPlayerCurrent, getPlayerState, releasePlayer, sellPlayer, setTraining } from "../game/career";
 import { formatMoney } from "../game/format";
 import type { CareerState } from "../game/types";
 import { PlayerPanel } from "./PlayerPanel";
-import { RatingBadge } from "./ui";
+import { RatingBadge, RatingDots } from "./ui";
 
 const CAT_ORDER: Record<string, number> = { GK: 0, DF: 1, MF: 2, FW: 3 };
 
@@ -19,11 +19,12 @@ export function SquadView({ career, apply }: Props) {
   const squad = useMemo(() => {
     const ids = career.squads[career.userClubId] ?? [];
     return ids
-      .map((id) => ({ id, p: getPlayerCurrent(career, id) }))
+      .map((id) => ({ id, p: getPlayerCurrent(career, id), st: getPlayerState(career, id) }))
       .sort((a, b) => (CAT_ORDER[a.p.category] - CAT_ORDER[b.p.category]) || b.p.ca - a.p.ca);
   }, [career]);
 
   const selectedPlayer = selected != null ? getPlayerCurrent(career, selected) : null;
+  const selectedState = selected != null ? getPlayerState(career, selected) : null;
 
   const doSell = (id: number) => {
     const out = sellPlayer(career, id);
@@ -50,19 +51,26 @@ export function SquadView({ career, apply }: Props) {
           <thead>
             <tr>
               <th>Name</th><th>Pos</th><th className="num">CA</th><th className="num">PA</th>
-              <th className="num">Age</th><th className="num">Value</th><th className="num">Wage</th>
+              <th className="num">Cond</th><th>Form</th><th className="num">Age</th><th>Status</th>
             </tr>
           </thead>
           <tbody>
-            {squad.map(({ id, p }) => (
+            {squad.map(({ id, p, st }) => (
               <tr key={id} className="row-click" onClick={() => setSelected(id)}>
                 <td>{p.name}</td>
                 <td>{p.position}</td>
                 <td className="num"><RatingBadge ca={p.ca} /></td>
                 <td className="num dim">{p.pa}</td>
+                <td className={`num ${st.condition < 70 ? "cond-low" : "dim"}`}>{Math.round(st.condition)}</td>
+                <td><RatingDots form={st.form} /></td>
                 <td className="num">{p.age}</td>
-                <td className="num">{formatMoney(p.value)}</td>
-                <td className="num dim">{formatMoney(p.wage)}</td>
+                <td className="muted">
+                  {st.injured || st.injuryDaysLeft > 0
+                    ? `Injured ${st.injuryDaysLeft}d`
+                    : st.suspended > 0
+                      ? `Suspended ${st.suspended}m`
+                      : ""}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -72,7 +80,11 @@ export function SquadView({ career, apply }: Props) {
       {selectedPlayer && selected != null && (
         <div className="modal-backdrop" onClick={() => setSelected(null)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <PlayerPanel player={selectedPlayer} />
+            <PlayerPanel
+              player={selectedPlayer}
+              state={selectedState ?? undefined}
+              onSetTraining={(focus) => apply(setTraining(career, selected, focus))}
+            />
             <div className="btn-row" style={{ marginTop: 16 }}>
               <button className="btn" onClick={() => doSell(selected)}>Sell ({formatMoney(Math.round(selectedPlayer.value * 0.85))})</button>
               <button className="btn danger" onClick={() => doRelease(selected)}>Release</button>

@@ -24,7 +24,7 @@ export function generateFixtures(teamIds: number[]): Fixture[] {
   const fixtures: Fixture[] = [];
 
   const add = (round: number, home: number, away: number) => {
-    fixtures.push({ id: `${round}-${home}-${away}`, stage: round, homeId: home, awayId: away });
+    fixtures.push({ id: `league-${round}-${home}-${away}`, stage: round, homeId: home, awayId: away, competition: "league" });
   };
 
   const half = firstHalf.length;
@@ -36,4 +36,22 @@ export function generateFixtures(teamIds: number[]): Fixture[] {
   });
 
   return fixtures;
+}
+
+export function shuffle<T>(arr: T[], rng: () => number): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+export function pairKnockout(teams: number[], rng: () => number): { matches: [number, number][]; byes: number[] } {
+  const shuffled = shuffle(teams, rng);
+  const matches: [number, number][] = [];
+  while (shuffled.length >= 2) {
+    matches.push([shuffled.pop()!, shuffled.pop()!]);
+  }
+  return { matches, byes: shuffled };
 }

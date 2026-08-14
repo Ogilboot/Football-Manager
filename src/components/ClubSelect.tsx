@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { db } from "../game/data";
-import { teamStrength } from "../game/matchEngine";
+import { teamStrength } from "../game/strength";
 
 interface Props {
   onBack: () => void;
