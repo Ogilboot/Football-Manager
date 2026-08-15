@@ -16,7 +16,7 @@ import type { BoardObjective, CareerState, Category, CompetitionInfo, Contract, 
 
 export { defaultPlayerState, getPlayerState } from "./playerState";
 
-export const GAME_VERSION = 19;
+export const GAME_VERSION = 20;
 const START_DATE = "2025-08-16";
 const SAVE_KEY = "fm25_career";
 
@@ -77,7 +77,10 @@ export function weeklyWages(state: CareerState): number {
 
 export function weeklyIncome(state: CareerState): number {
   const strength = teamStrength(state.squads[state.userClubId] ?? [], (id) => getPlayerCurrent(state, id).ca);
-  return Math.round(strength * 14_000);
+  // Real weekly revenue: an elite club (~strength 170) earns ~£8M/wk, a
+  // second-division club (~strength 120) earns ~£300k/wk.
+  const weekly = 70_000 * Math.exp(0.05827 * (strength - 100));
+  return Math.max(20_000, Math.round(weekly / 1000) * 1000);
 }
 
 export interface ContractOutcome {
@@ -251,7 +254,7 @@ function qualifiers(userClubId: number, results: Record<string, MatchResult>, fi
   const hasResults = Object.keys(results).length > 0;
   const ucl: number[] = [];
   const uel: number[] = [];
-  for (const league of db.leagues) {
+  for (const league of db.leagues.filter((l) => l.level === 1)) {
     let ordered: number[];
     const userLeague = league.teams.includes(userClubId);
     if (userLeague && hasResults) {
@@ -377,7 +380,7 @@ export function newCareer(clubId: number, saveName: string): CareerState {
     dayOfWeek: 6,
     userClubId: clubId,
     balance: startingBudget(clubId),
-    wageBudget: Math.round(squadWages(squads, clubId) * 1.1),
+    wageBudget: Math.round(squadWages(squads, clubId) * 1.5),
     squads,
     fixtures,
     competitions,
@@ -1275,7 +1278,7 @@ function generateYouthPlayer(rng: Rng, id: number, ca: number): Player {
     ca,
     pa,
     value: Math.round(Math.max(0, ca - 40) ** 2 * 1500),
-    wage: Math.max(400, Math.round(ca * 200)),
+    wage: Math.max(500, Math.round(ca * 30)),
     attrs,
     personality: generatePersonality(id, name),
   };

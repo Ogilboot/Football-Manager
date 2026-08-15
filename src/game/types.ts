@@ -128,6 +128,7 @@ export interface Team {
 export interface League {
   name: string;
   country: string;
+  level: number;
   teams: number[];
 }
 

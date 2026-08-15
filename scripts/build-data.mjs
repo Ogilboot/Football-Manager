@@ -4,17 +4,25 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, "..");
-const SRC_CSV = "C:/Users/callu/AppData/Local/Temp/opencode/fc25_male_players.csv";
+const SRC_CSV = "C:/Users/callu/AppData/Local/Temp/opencode/fc26_players.csv";
 
-// Which leagues to include (easy to extend).
-const LEAGUE_COUNTRY = {
-  "Premier League": "England",
-  "EFL Championship": "England",
-  "LALIGA EA SPORTS": "Spain",
-  "Serie A Enilive": "Italy",
-  "Bundesliga": "Germany",
-  "Ligue 1 McDonald's": "France",
+// Top 5 European leagues + their 2nd divisions, keyed by soFIFA league id.
+// league_id is reliable; league_name alone mixes countries (e.g. "Bundesliga"
+// also contains the Austrian Bundesliga).
+const LEAGUES = {
+  13: { name: "Premier League", country: "England", level: 1 },
+  14: { name: "Championship", country: "England", level: 2 },
+  53: { name: "La Liga", country: "Spain", level: 1 },
+  54: { name: "La Liga 2", country: "Spain", level: 2 },
+  31: { name: "Serie A", country: "Italy", level: 1 },
+  32: { name: "Serie B", country: "Italy", level: 2 },
+  19: { name: "Bundesliga", country: "Germany", level: 1 },
+  20: { name: "2. Bundesliga", country: "Germany", level: 2 },
+  16: { name: "Ligue 1", country: "France", level: 1 },
+  17: { name: "Ligue 2", country: "France", level: 2 },
 };
+
+const MAX_SQUAD = 30; // cap players per club (first team only)
 
 function parseCSV(text) {
   const rows = [];
@@ -39,61 +47,30 @@ function parseCSV(text) {
 const rows = parseCSV(fs.readFileSync(SRC_CSV, "utf8"));
 const header = rows[0];
 const col = (name) => header.indexOf(name);
-const num = (v) => { const n = parseInt(String(v).replace(/[^0-9]/g, ""), 10); return Number.isFinite(n) ? n : null; };
-
-const C = {
-  name: col("Name"),
-  ovr: col("OVR"),
-  position: col("Position"),
-  altPositions: col("Alternative positions"),
-  height: col("Height"),
-  weight: col("Weight"),
-  age: col("Age"),
-  nation: col("Nation"),
-  weakFoot: col("Weak foot"),
-  skillMoves: col("Skill moves"),
-  foot: col("Preferred foot"),
-  team: col("Team"),
-  league: col("League"),
-  crossing: col("Crossing"),
-  finishing: col("Finishing"),
-  heading: col("Heading Accuracy"),
-  shortPassing: col("Short Passing"),
-  volleys: col("Volleys"),
-  dribbling: col("Dribbling"),
-  curve: col("Curve"),
-  freeKick: col("Free Kick Accuracy"),
-  longPassing: col("Long Passing"),
-  ballControl: col("Ball Control"),
-  acceleration: col("Acceleration"),
-  sprintSpeed: col("Sprint Speed"),
-  agility: col("Agility"),
-  reactions: col("Reactions"),
-  balance: col("Balance"),
-  shotPower: col("Shot Power"),
-  jumping: col("Jumping"),
-  stamina: col("Stamina"),
-  strength: col("Strength"),
-  longShots: col("Long Shots"),
-  aggression: col("Aggression"),
-  interceptions: col("Interceptions"),
-  positioning: col("Positioning"),
-  vision: col("Vision"),
-  penalties: col("Penalties"),
-  marking: col("Def Awareness"),
-  standingTackle: col("Standing Tackle"),
-  slidingTackle: col("Sliding Tackle"),
-  composure: col("Composure"),
-  gkDiving: col("GK Diving"),
-  gkHandling: col("GK Handling"),
-  gkKicking: col("GK Kicking"),
-  gkPositioning: col("GK Positioning"),
-  gkReflexes: col("GK Reflexes"),
+const num = (v) => {
+  const n = Number(String(v).replace(/[^0-9.-]/g, ""));
+  return Number.isFinite(n) ? Math.round(n) : null;
 };
 
-function cm(s) { return num(s); } // "182cm / 6'0\"" -> 182
-function kg(s) { return num(s); } // "75kg / 165lb" -> 75
-function firstWord(s) { return String(s).split(",")[0].trim().toUpperCase(); }
+const C = {
+  url: col("player_url"),
+  shortName: col("short_name"),
+  positions: col("player_positions"),
+  clubPosition: col("club_position"),
+  overall: col("overall"),
+  potential: col("potential"),
+  value: col("value_eur"),
+  wage: col("wage_eur"),
+  age: col("age"),
+  height: col("height_cm"),
+  weight: col("weight_kg"),
+  nation: col("nationality_name"),
+  foot: col("preferred_foot"),
+  weakFoot: col("weak_foot"),
+  skillMoves: col("skill_moves"),
+  team: col("club_name"),
+  leagueId: col("league_id"),
+};
 
 function category(pos) {
   if (pos === "GK") return "GK";
@@ -109,89 +86,107 @@ function shortCode(name) {
   return words.map((w) => w[0]).join("").slice(0, 3).toUpperCase();
 }
 
-function potential(ca, age) {
-  const boost = age <= 19 ? 10 : age <= 21 ? 7 : age <= 23 ? 5 : age <= 25 ? 3 : age <= 27 ? 1 : 0;
-  return Math.min(99, ca + boost);
-}
-
-const POS_FACTOR = { GK: 0.85, DF: 0.9, MF: 1.0, FW: 1.15 };
-function value(ca, age, cat) {
-  const ageFactor = age <= 21 ? 1.2 : age <= 25 ? 1.05 : age <= 28 ? 0.85 : age <= 31 ? 0.5 : age <= 34 ? 0.25 : 0.1;
-  const rating = Math.pow(ca / 100, 6);
-  return Math.round((rating * 250_000_000 * (POS_FACTOR[cat] ?? 1) * ageFactor) / 10000) * 10000;
-}
-function wage(ca) {
-  return Math.max(500, Math.round(Math.pow(ca / 100, 4) * 400_000 / 500) * 500);
-}
+const ATTR_MAP = {
+  crossing: "attacking_crossing",
+  finishing: "attacking_finishing",
+  heading: "attacking_heading_accuracy",
+  shortPassing: "attacking_short_passing",
+  volleys: "attacking_volleys",
+  dribbling: "skill_dribbling",
+  curve: "skill_curve",
+  freeKick: "skill_fk_accuracy",
+  longPassing: "skill_long_passing",
+  ballControl: "skill_ball_control",
+  acceleration: "movement_acceleration",
+  sprintSpeed: "movement_sprint_speed",
+  agility: "movement_agility",
+  reactions: "movement_reactions",
+  balance: "movement_balance",
+  shotPower: "power_shot_power",
+  jumping: "power_jumping",
+  stamina: "power_stamina",
+  strength: "power_strength",
+  longShots: "power_long_shots",
+  aggression: "mentality_aggression",
+  interceptions: "mentality_interceptions",
+  positioning: "mentality_positioning",
+  vision: "mentality_vision",
+  penalties: "mentality_penalties",
+  composure: "mentality_composure",
+  marking: "defending_marking_awareness",
+  standingTackle: "defending_standing_tackle",
+  slidingTackle: "defending_sliding_tackle",
+  gkDiving: "goalkeeping_diving",
+  gkHandling: "goalkeeping_handling",
+  gkKicking: "goalkeeping_kicking",
+  gkPositioning: "goalkeeping_positioning",
+  gkReflexes: "goalkeeping_reflexes",
+};
+const attrCols = Object.fromEntries(Object.entries(ATTR_MAP).map(([k, name]) => [k, col(name)]));
 
 // ---- Parse players in selected leagues -----------------------------------
-const teams = new Map(); // teamName -> { id, league, players: [] }
+const teams = new Map(); // clubName -> { id, league, players: [] }
 const players = {};
 let playerSeq = 0;
 let skipped = 0;
 
 for (let r = 1; r < rows.length; r++) {
   const row = rows[r];
-  const league = row[C.league];
+  const leagueId = num(row[C.leagueId]);
   const teamName = row[C.team];
-  const ca = num(row[C.ovr]);
-  if (!(league in LEAGUE_COUNTRY) || !teamName || ca == null) { skipped++; continue; }
+  const ca = num(row[C.overall]);
+  const clubPos = row[C.clubPosition];
+  if (!(leagueId in LEAGUES) || !teamName || ca == null || clubPos === "RES") { skipped++; continue; }
 
   if (!teams.has(teamName)) {
-    teams.set(teamName, { id: teams.size, name: teamName, league, country: LEAGUE_COUNTRY[league], players: [] });
+    const league = LEAGUES[leagueId];
+    teams.set(teamName, { id: teams.size, name: teamName, league: league.name, country: league.country, players: [] });
   }
   const team = teams.get(teamName);
   const playerId = playerSeq++;
-  team.players.push(playerId);
+  team.players.push({ playerId, ca });
 
-  const age = num(row[C.age]) ?? 0;
-  const pos = firstWord(row[C.position]);
-  const cat = category(pos);
-  const attrs = (keys) => {
-    const o = {};
-    for (const [k, i] of Object.entries(keys)) o[k] = num(row[i]) ?? 0;
-    return o;
-  };
+  const positions = String(row[C.positions] || "").split(",").map((s) => s.trim()).filter(Boolean);
+  const pos = positions[0] ?? "CM";
+  const pa = num(row[C.potential]) ?? ca;
+
+  const attrs = {};
+  for (const [k, i] of Object.entries(attrCols)) attrs[k] = num(row[i]) ?? 0;
 
   players[playerId] = {
-    name: row[C.name],
-    age,
+    name: row[C.shortName] || "Unknown",
+    age: num(row[C.age]) ?? 0,
     nation: row[C.nation] || null,
     position: pos,
-    altPositions: String(row[C.altPositions] || "").split(",").map((s) => s.trim()).filter(Boolean),
-    category: cat,
-    height: cm(row[C.height]),
-    weight: kg(row[C.weight]),
+    altPositions: positions.slice(1),
+    category: category(pos),
+    height: num(row[C.height]),
+    weight: num(row[C.weight]),
     foot: row[C.foot] === "Left" ? "left" : row[C.foot] === "Right" ? "right" : null,
     weakFoot: num(row[C.weakFoot]) ?? 3,
     skillMoves: num(row[C.skillMoves]) ?? 2,
     ca,
-    pa: potential(ca, age),
-    value: value(ca, age, cat),
-    wage: wage(ca),
-    attrs: attrs({
-      crossing: C.crossing, finishing: C.finishing, heading: C.heading,
-      shortPassing: C.shortPassing, volleys: C.volleys, dribbling: C.dribbling,
-      curve: C.curve, freeKick: C.freeKick, longPassing: C.longPassing,
-      ballControl: C.ballControl, acceleration: C.acceleration, sprintSpeed: C.sprintSpeed,
-      agility: C.agility, reactions: C.reactions, balance: C.balance, shotPower: C.shotPower,
-      jumping: C.jumping, stamina: C.stamina, strength: C.strength, longShots: C.longShots,
-      aggression: C.aggression, interceptions: C.interceptions, positioning: C.positioning,
-      vision: C.vision, penalties: C.penalties, marking: C.marking, standingTackle: C.standingTackle,
-      slidingTackle: C.slidingTackle, composure: C.composure, gkDiving: C.gkDiving,
-      gkHandling: C.gkHandling, gkKicking: C.gkKicking, gkPositioning: C.gkPositioning, gkReflexes: C.gkReflexes,
-    }),
+    pa,
+    value: num(row[C.value]) ?? 0,
+    wage: num(row[C.wage]) ?? 500,
+    attrs,
   };
+}
+
+// Cap each squad to the strongest players.
+for (const t of teams.values()) {
+  t.players = t.players.sort((a, b) => b.ca - a.ca).slice(0, MAX_SQUAD).map((p) => p.playerId);
 }
 
 const teamList = [...teams.values()]
   .sort((a, b) => a.name.localeCompare(b.name))
   .map((t) => ({ id: t.id, name: t.name, shortName: shortCode(t.name), league: t.league, country: t.country }));
 
-const leagues = Object.entries(LEAGUE_COUNTRY).map(([name, country]) => ({
-  name,
-  country,
-  teams: teamList.filter((t) => t.league === name).map((t) => t.id),
+const leagues = Object.values(LEAGUES).map((l) => ({
+  name: l.name,
+  country: l.country,
+  level: l.level,
+  teams: teamList.filter((t) => t.league === l.name).map((t) => t.id),
 }));
 
 const squads = {};
@@ -199,9 +194,9 @@ for (const t of teams.values()) squads[t.id] = t.players;
 
 const out = {
   meta: {
-    game: "EA Sports FC 25",
+    game: "EA Sports FC 26",
     season: "2025/2026",
-    source: "soFIFA / EA Sports FC 25 player database (mirrored from nyagami's Kaggle FC25 dataset)",
+    source: "EA Sports FC 26 player database (soFIFA via ismailoksuz/EAFC26-DataHub)",
     generatedAt: new Date().toISOString(),
   },
   leagues,
@@ -216,7 +211,7 @@ fs.writeFileSync(dest, JSON.stringify(out));
 
 console.log(`Leagues: ${leagues.length}`);
 console.log(`Teams: ${teamList.length}`);
-console.log(`Players: ${Object.keys(players).length} (skipped ${skipped} out of league / missing)`);
+console.log(`Players: ${Object.keys(players).length} (skipped ${skipped})`);
 console.log(`JSON: ${(fs.statSync(dest).size / 1024).toFixed(0)} KB`);
 for (const l of leagues) {
   const n = l.teams.reduce((sum, id) => sum + (squads[id]?.length ?? 0), 0);

@@ -12,8 +12,8 @@ test("newCareer creates cup and European competitions", () => {
   assert.ok(state.competitions.ucl, "champions league");
   assert.ok(state.competitions.uel, "europa league");
   assert.equal(state.competitions.cup.teams.length, leagueSize);
-  assert.equal(state.competitions.ucl.teams.length, 24);
-  assert.equal(state.competitions.uel.teams.length, 24);
+  assert.equal(state.competitions.ucl.teams.length, 20);
+  assert.equal(state.competitions.uel.teams.length, 20);
   assert.ok(state.competitions.cup.teams.includes(club.id), "user always enters the cup");
 });
 
