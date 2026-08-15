@@ -1,6 +1,8 @@
 import { db } from "../game/data";
 import { competitionName, fixturesFor } from "../game/career";
 import type { CareerState, MatchResult } from "../game/types";
+import { sortBy, useSort } from "../hooks/useSort";
+import { SortHeader } from "./ui";
 
 function letter(res: MatchResult, clubId: number): "W" | "D" | "L" {
   const gf = res.homeId === clubId ? res.homeGoals : res.awayGoals;
@@ -14,7 +16,24 @@ interface Props {
 
 export function FixturesView({ career }: Props) {
   const clubId = career.userClubId;
-  const fixtures = fixturesFor(career, clubId).sort((a, b) => a.stage - b.stage || a.competition.localeCompare(b.competition));
+  const { sort, toggle } = useSort("stage", "asc");
+
+  const fixtures = sortBy(fixturesFor(career, clubId), sort, (f, key) => {
+    switch (key) {
+      case "stage": return f.stage;
+      case "comp": return competitionName(f.competition);
+      case "opponent": return db.teamById.get(f.homeId === clubId ? f.awayId : f.homeId)!.name.toLowerCase();
+      case "ha": return f.homeId === clubId ? "H" : "A";
+      case "result": {
+        const res = career.results[f.id];
+        if (!res) return "";
+        const gf = res.homeId === clubId ? res.homeGoals : res.awayGoals;
+        const ga = res.homeId === clubId ? res.awayGoals : res.homeGoals;
+        return gf > ga ? "W" : gf < ga ? "L" : "D";
+      }
+      default: return f.stage;
+    }
+  });
 
   return (
     <div className="panel">
@@ -22,12 +41,12 @@ export function FixturesView({ career }: Props) {
       <table className="table">
         <thead>
           <tr>
-            <th className="num">Stage</th>
-            <th>Comp</th>
-            <th>Opponent</th>
-            <th className="num">H/A</th>
+            <SortHeader label="Stage" sortKey="stage" sort={sort} onSort={toggle} num />
+            <SortHeader label="Comp" sortKey="comp" sort={sort} onSort={toggle} />
+            <SortHeader label="Opponent" sortKey="opponent" sort={sort} onSort={toggle} />
+            <SortHeader label="H/A" sortKey="ha" sort={sort} onSort={toggle} num />
             <th className="num">Score</th>
-            <th className="num">Result</th>
+            <SortHeader label="Result" sortKey="result" sort={sort} onSort={toggle} num />
           </tr>
         </thead>
         <tbody>

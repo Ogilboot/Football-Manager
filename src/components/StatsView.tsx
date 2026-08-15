@@ -1,6 +1,8 @@
 import { db } from "../game/data";
 import { playerClub, topAssists, topScorers } from "../game/career";
 import type { CareerState } from "../game/types";
+import { sortBy, useSort } from "../hooks/useSort";
+import { SortHeader } from "./ui";
 
 interface Row {
   playerId: number;
@@ -9,19 +11,33 @@ interface Row {
 }
 
 function PlayerTable({ career, rows, primary }: { career: CareerState; rows: Row[]; primary: "goals" | "assists" }) {
+  const { sort, toggle } = useSort(primary);
+  const sorted = sortBy(rows, sort, (r, key) => {
+    switch (key) {
+      case "player": return db.players.get(r.playerId)?.name.toLowerCase() ?? "";
+      case "club": {
+        const cid = playerClub(career, r.playerId);
+        return cid != null ? db.teamById.get(cid)!.name : "";
+      }
+      case "goals": return r.goals;
+      case "assists": return r.assists;
+      default: return r.goals;
+    }
+  });
+
   return (
     <table className="table">
       <thead>
         <tr>
           <th className="num">#</th>
-          <th>Player</th>
-          <th>Club</th>
-          <th className="num">G</th>
-          <th className="num">A</th>
+          <SortHeader label="Player" sortKey="player" sort={sort} onSort={toggle} />
+          <SortHeader label="Club" sortKey="club" sort={sort} onSort={toggle} />
+          <SortHeader label="G" sortKey="goals" sort={sort} onSort={toggle} num />
+          <SortHeader label="A" sortKey="assists" sort={sort} onSort={toggle} num />
         </tr>
       </thead>
       <tbody>
-        {rows.map((r, i) => {
+        {sorted.map((r, i) => {
           const p = db.players.get(r.playerId);
           const clubId = playerClub(career, r.playerId);
           const club = clubId != null ? db.teamById.get(clubId) : null;

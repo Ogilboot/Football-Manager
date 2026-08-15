@@ -4,8 +4,9 @@ import { buildPlayerClubMap, buyPlayer, getPlayerCurrent } from "../game/career"
 import { nationFlag } from "../game/nations";
 import { formatMoney } from "../game/format";
 import type { CareerState } from "../game/types";
+import { sortBy, useSort } from "../hooks/useSort";
 import { PlayerPanel } from "./PlayerPanel";
-import { AbilityStars } from "./ui";
+import { AbilityStars, SortHeader } from "./ui";
 
 interface Props {
   career: CareerState;
@@ -19,12 +20,14 @@ export function TransfersView({ career, apply }: Props) {
   const [query, setQuery] = useState("");
   const [cat, setCat] = useState<(typeof CATS)[number]>("All");
   const [league, setLeague] = useState<string>("All");
-  const [sort, setSort] = useState<"ca" | "value" | "age">("ca");
   const [limit, setLimit] = useState(PAGE);
   const [selected, setSelected] = useState<number | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const { sort, toggle } = useSort("ca");
 
   const clubOf = useMemo(() => buildPlayerClubMap(career), [career]);
+
+  const clubName = (id: number | null, inSquad: boolean) => (inSquad ? "Your squad" : id != null ? db.teamById.get(id)!.name : "Free Agent");
 
   const results = useMemo(() => {
     const list: { id: number; ca: number; pa: number; value: number; age: number; clubId: number | null; pos: string; cat: string; name: string; nation: string | null; inSquad: boolean }[] = [];
@@ -44,8 +47,18 @@ export function TransfersView({ career, apply }: Props) {
       }
       return true;
     });
-    filtered.sort((a, b) => (sort === "value" ? b.value - a.value : sort === "age" ? a.age - b.age : b.ca - a.ca));
-    return filtered;
+    return sortBy(filtered, sort, (x, key) => {
+      switch (key) {
+        case "name": return x.name.toLowerCase();
+        case "nation": return x.nation ?? "";
+        case "position": return x.pos;
+        case "club": return clubName(x.clubId, x.inSquad);
+        case "ca": return x.ca;
+        case "age": return x.age;
+        case "value": return x.value;
+        default: return x.ca;
+      }
+    });
   }, [career, clubOf, query, cat, league, sort]);
 
   const leagues = ["All", "Free Agents", ...db.leagues.map((l) => l.name)];
@@ -85,11 +98,6 @@ export function TransfersView({ career, apply }: Props) {
           <select value={league} onChange={(e) => { setLeague(e.target.value); setLimit(PAGE); }}>
             {leagues.map((l) => <option key={l} value={l}>{l}</option>)}
           </select>
-          <select value={sort} onChange={(e) => setSort(e.target.value as typeof sort)}>
-            <option value="ca">Sort: Ability</option>
-            <option value="value">Sort: Value</option>
-            <option value="age">Sort: Age</option>
-          </select>
         </div>
 
         <div className="muted small" style={{ marginBottom: 8 }}>
@@ -99,8 +107,14 @@ export function TransfersView({ career, apply }: Props) {
         <table className="table">
           <thead>
             <tr>
-              <th>Name</th><th>Nat</th><th>Pos</th><th>Club</th><th>Ability</th>
-              <th className="num">Age</th><th className="num">Value</th><th></th>
+              <SortHeader label="Name" sortKey="name" sort={sort} onSort={toggle} />
+              <SortHeader label="Nat" sortKey="nation" sort={sort} onSort={toggle} />
+              <SortHeader label="Pos" sortKey="position" sort={sort} onSort={toggle} />
+              <SortHeader label="Club" sortKey="club" sort={sort} onSort={toggle} />
+              <SortHeader label="Ability" sortKey="ca" sort={sort} onSort={toggle} />
+              <SortHeader label="Age" sortKey="age" sort={sort} onSort={toggle} num />
+              <SortHeader label="Value" sortKey="value" sort={sort} onSort={toggle} num />
+              <th></th>
             </tr>
           </thead>
           <tbody>

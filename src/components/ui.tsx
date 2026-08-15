@@ -1,4 +1,21 @@
 import type { Category } from "../game/types";
+import type { SortState } from "../hooks/useSort";
+
+export function SortHeader({ label, sortKey, sort, onSort, num }: {
+  label: string;
+  sortKey: string;
+  sort: SortState;
+  onSort: (key: string) => void;
+  num?: boolean;
+}) {
+  const active = sort.key === sortKey;
+  return (
+    <th className={`${num ? "num" : ""} sortable`} onClick={() => onSort(sortKey)}>
+      {label}
+      {active && <span className="sort-arrow">{sort.dir === "asc" ? "▲" : "▼"}</span>}
+    </th>
+  );
+}
 
 export function CategoryBadge({ cat }: { cat: Category }) {
   return <span className={`badge ${cat}`}>{cat}</span>;

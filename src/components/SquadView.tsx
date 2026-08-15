@@ -3,8 +3,9 @@ import { getContract, getPlayerCurrent, getPlayerState, happinessReasons, intera
 import { nationFlag } from "../game/nations";
 import { formatMoney } from "../game/format";
 import type { CareerState } from "../game/types";
+import { sortBy, useSort } from "../hooks/useSort";
 import { PlayerPanel } from "./PlayerPanel";
-import { AbilityStars, RatingDots } from "./ui";
+import { AbilityStars, RatingDots, SortHeader } from "./ui";
 
 const CAT_ORDER: Record<string, number> = { GK: 0, DF: 1, MF: 2, FW: 3 };
 
@@ -16,13 +17,24 @@ interface Props {
 export function SquadView({ career, apply }: Props) {
   const [selected, setSelected] = useState<number | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const { sort, toggle } = useSort("ca");
 
   const squad = useMemo(() => {
     const ids = career.squads[career.userClubId] ?? [];
-    return ids
-      .map((id) => ({ id, p: getPlayerCurrent(career, id), st: getPlayerState(career, id) }))
-      .sort((a, b) => (CAT_ORDER[a.p.category] - CAT_ORDER[b.p.category]) || b.p.ca - a.p.ca);
-  }, [career]);
+    const list = ids.map((id) => ({ id, p: getPlayerCurrent(career, id), st: getPlayerState(career, id) }));
+    return sortBy(list, sort, (x, key) => {
+      switch (key) {
+        case "name": return x.p.name.toLowerCase();
+        case "nation": return x.p.nation ?? "";
+        case "position": return `${CAT_ORDER[x.p.category]}-${x.p.position}`;
+        case "ca": return x.p.ca;
+        case "condition": return x.st.condition;
+        case "form": return x.st.form.length ? x.st.form[x.st.form.length - 1] : 0;
+        case "age": return x.p.age;
+        default: return x.p.ca;
+      }
+    });
+  }, [career, sort]);
 
   const selectedPlayer = selected != null ? getPlayerCurrent(career, selected) : null;
   const selectedState = selected != null ? getPlayerState(career, selected) : null;
@@ -51,8 +63,14 @@ export function SquadView({ career, apply }: Props) {
         <table className="table">
           <thead>
             <tr>
-              <th>Name</th><th>Nat</th><th>Pos</th><th>Ability</th>
-              <th className="num">Cond</th><th>Form</th><th className="num">Age</th><th>Status</th>
+              <SortHeader label="Name" sortKey="name" sort={sort} onSort={toggle} />
+              <SortHeader label="Nat" sortKey="nation" sort={sort} onSort={toggle} />
+              <SortHeader label="Pos" sortKey="position" sort={sort} onSort={toggle} />
+              <SortHeader label="Ability" sortKey="ca" sort={sort} onSort={toggle} />
+              <SortHeader label="Cond" sortKey="condition" sort={sort} onSort={toggle} num />
+              <SortHeader label="Form" sortKey="form" sort={sort} onSort={toggle} />
+              <SortHeader label="Age" sortKey="age" sort={sort} onSort={toggle} num />
+              <th>Status</th>
             </tr>
           </thead>
           <tbody>

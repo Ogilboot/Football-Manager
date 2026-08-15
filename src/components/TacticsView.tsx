@@ -1,9 +1,11 @@
+import { useState } from "react";
 import { getPlayerCurrent, setTactics } from "../game/career";
 import { FORMATIONS, getFormation } from "../game/formations";
 import { DEFENSIVE_LINES, MENTALITIES, PASSING_STYLES, PRESSING_LEVELS, TEMPOS, WIDTHS } from "../game/instructions";
 import { getRole } from "../game/roles";
 import { assignPlayer, pickLineup } from "../game/teamSelection";
 import type { CareerState, TeamInstructions } from "../game/types";
+import { AbilityStars } from "./ui";
 
 interface Props {
   career: CareerState;
@@ -15,24 +17,49 @@ function shortName(name: string): string {
   return parts.length > 1 ? parts[parts.length - 1] : name;
 }
 
+function PitchBackground() {
+  return (
+    <svg viewBox="0 0 68 105" className="tactics-pitch-svg" preserveAspectRatio="none">
+      {Array.from({ length: 7 }, (_, i) => (
+        <rect key={i} y={i * 15} width="68" height="15" fill={i % 2 ? "#1c5e34" : "#216b3b"} />
+      ))}
+      <g stroke="rgba(255,255,255,0.7)" fill="none" strokeWidth="0.5">
+        <rect x="1" y="1" width="66" height="103" />
+        <line x1="1" y1="52.5" x2="67" y2="52.5" />
+        <circle cx="34" cy="52.5" r="9.15" />
+        <rect x="13.85" y="1" width="40.3" height="16.5" />
+        <rect x="13.85" y="87.5" width="40.3" height="16.5" />
+        <rect x="24.85" y="1" width="18.3" height="5.5" />
+        <rect x="24.85" y="98.5" width="18.3" height="5.5" />
+        <circle cx="34" cy="11" r="0.5" fill="rgba(255,255,255,0.7)" />
+        <circle cx="34" cy="94" r="0.5" fill="rgba(255,255,255,0.7)" />
+      </g>
+      <g stroke="#fff" strokeWidth="1">
+        <line x1="30.34" y1="0.5" x2="37.66" y2="0.5" />
+        <line x1="30.34" y1="104.5" x2="37.66" y2="104.5" />
+      </g>
+    </svg>
+  );
+}
+
 export function TacticsView({ career, apply }: Props) {
   const clubId = career.userClubId;
   const squad = career.squads[clubId] ?? [];
   const caOf = (id: number) => getPlayerCurrent(career, id).ca;
 
+  const [dragId, setDragId] = useState<number | null>(null);
+
+  const formation = getFormation(career.tactics.formationId);
+  const lineup = career.tactics.lineup;
+  const bench = career.tactics.bench;
+
   const squadPlayers = [...squad]
     .map((id) => ({ id, p: getPlayerCurrent(career, id) }))
     .sort((a, b) => b.p.ca - a.p.ca);
 
-  const formation = getFormation(career.tactics.formationId);
-  const nameOf = (id: number) => {
-    const p = getPlayerCurrent(career, id);
-    return `${p.name} (${p.ca})`;
-  };
-
   const changeFormation = (fid: string) => {
-    const { lineup, bench } = pickLineup(squad, getFormation(fid), caOf);
-    apply(setTactics(career, { formationId: fid, instructions: career.tactics.instructions, lineup, bench }));
+    const { lineup: li, bench: be } = pickLineup(squad, getFormation(fid), caOf);
+    apply(setTactics(career, { formationId: fid, instructions: career.tactics.instructions, lineup: li, bench: be }));
   };
 
   const changeInstruction = (key: keyof TeamInstructions, value: string) => {
@@ -40,24 +67,27 @@ export function TacticsView({ career, apply }: Props) {
     apply(setTactics(career, { ...career.tactics, instructions }));
   };
 
-  const changeSlot = (area: "lineup" | "bench", index: number, playerId: number) => {
-    apply(setTactics(career, assignPlayer(career.tactics, area, index, playerId)));
-  };
-
   const autoPick = () => {
-    const { lineup, bench } = pickLineup(squad, getFormation(career.tactics.formationId), caOf);
-    apply(setTactics(career, { ...career.tactics, lineup, bench }));
+    const { lineup: li, bench: be } = pickLineup(squad, getFormation(career.tactics.formationId), caOf);
+    apply(setTactics(career, { ...career.tactics, lineup: li, bench: be }));
   };
 
-  const playerOptions = squadPlayers.map((x) => ({ id: x.id, label: nameOf(x.id) }));
+  const dropOnSlot = (index: number) => {
+    if (dragId == null) return;
+    apply(setTactics(career, assignPlayer(career.tactics, "lineup", index, dragId)));
+    setDragId(null);
+  };
 
-  const Select = ({ value, onChange }: { value: number; onChange: (id: number) => void }) => (
-    <select value={String(value)} onChange={(e) => onChange(Number(e.target.value))} style={{ minWidth: 200 }}>
-      {playerOptions.map((o) => (
-        <option key={o.id} value={o.id}>{o.label}</option>
-      ))}
-    </select>
-  );
+  const dropOnBench = (index: number) => {
+    if (dragId == null) return;
+    apply(setTactics(career, assignPlayer(career.tactics, "bench", index, dragId)));
+    setDragId(null);
+  };
+
+  const dragStart = (e: React.DragEvent, id: number) => {
+    e.dataTransfer.setData("text/plain", String(id));
+    setDragId(id);
+  };
 
   const Instruction = ({ label, value, options, onChange }: { label: string; value: string; options: string[]; onChange: (v: string) => void }) => (
     <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
@@ -74,14 +104,12 @@ export function TacticsView({ career, apply }: Props) {
         <div className="panel-title">Formation</div>
         <div className="btn-row" style={{ flexWrap: "wrap" }}>
           {FORMATIONS.map((f) => (
-            <button
-              key={f.id}
-              className={`btn small ${f.id === formation.id ? "primary" : ""}`}
-              onClick={() => changeFormation(f.id)}
-            >
+            <button key={f.id} className={`btn small ${f.id === formation.id ? "primary" : ""}`} onClick={() => changeFormation(f.id)}>
               {f.name}
             </button>
           ))}
+          <div className="spacer" />
+          <button className="btn small" onClick={autoPick}>Auto-pick</button>
         </div>
       </div>
 
@@ -97,71 +125,68 @@ export function TacticsView({ career, apply }: Props) {
         </div>
       </div>
 
-      <div className="grid cols-2">
+      <div className="tactics-layout">
         <div className="panel">
-          <div className="section-head">
-            <div className="panel-title" style={{ margin: 0 }}>Starting XI</div>
-            <button className="btn small" onClick={autoPick}>Auto-pick</button>
+          <div className="panel-title">Pitch</div>
+          <div className="tactics-pitch">
+            <PitchBackground />
+            {formation.slots.map((slot, i) => {
+              const playerId = lineup[i];
+              const name = playerId != null ? shortName(getPlayerCurrent(career, playerId).name) : "—";
+              return (
+                <div
+                  key={i}
+                  className={`slot ${dragId != null ? "drop-target" : ""}`}
+                  draggable
+                  onDragStart={(e) => dragStart(e, playerId)}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={() => dropOnSlot(i)}
+                  onDragEnd={() => setDragId(null)}
+                  style={{ left: `${slot.y}%`, top: `${100 - slot.x}%` }}
+                  title={getRole(slot.roleId).name}
+                >
+                  <div className="slot-role">{getRole(slot.roleId).name}</div>
+                  <div className="slot-name">{name}</div>
+                </div>
+              );
+            })}
           </div>
-          <table className="table">
-            <tbody>
-              {formation.slots.map((slot, i) => {
-                const playerId = career.tactics.lineup[i];
-                return (
-                  <tr key={i}>
-                    <td className="dim" style={{ width: 120 }}>{getRole(slot.roleId).name}</td>
-                    <td><Select value={playerId} onChange={(id) => changeSlot("lineup", i, id)} /></td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <div className="bench-row">
+            {bench.map((playerId, i) => {
+              const name = playerId != null ? shortName(getPlayerCurrent(career, playerId).name) : "—";
+              return (
+                <div
+                  key={i}
+                  className={`bench-slot ${dragId != null ? "drop-target" : ""}`}
+                  draggable
+                  onDragStart={(e) => dragStart(e, playerId)}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={() => dropOnBench(i)}
+                  onDragEnd={() => setDragId(null)}
+                >
+                  <div className="slot-name">{name}</div>
+                </div>
+              );
+            })}
+          </div>
         </div>
 
         <div className="panel">
-          <div className="panel-title">Bench</div>
-          <table className="table">
-            <tbody>
-              {career.tactics.bench.map((playerId, i) => (
-                <tr key={i}>
-                  <td className="dim" style={{ width: 120 }}>SUB {i + 1}</td>
-                  <td><Select value={playerId} onChange={(id) => changeSlot("bench", i, id)} /></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div className="panel">
-        <div className="panel-title">Shape</div>
-        <div style={{ position: "relative", width: 360, height: 500, background: "#1e5a2a", borderRadius: 6, border: "2px solid #fff3", margin: "0 auto" }}>
-          <div style={{ position: "absolute", left: 0, right: 0, top: "50%", borderTop: "1px solid #ffffff22" }} />
-          <div style={{ position: "absolute", left: "50%", top: 0, bottom: 0, borderLeft: "1px solid #ffffff22" }} />
-          {formation.slots.map((slot, i) => {
-            const playerId = career.tactics.lineup[i];
-            const name = playerId != null ? shortName(getPlayerCurrent(career, playerId).name) : "—";
-            return (
-              <div
-                key={i}
-                style={{
-                  position: "absolute",
-                  left: `${slot.y}%`,
-                  top: `${100 - slot.x}%`,
-                  transform: "translate(-50%, -50%)",
-                  background: "#123",
-                  color: "#fff",
-                  border: "1px solid #ffffff55",
-                  borderRadius: 4,
-                  padding: "2px 6px",
-                  fontSize: 11,
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {name}
-              </div>
-            );
-          })}
+          <div className="panel-title">Squad</div>
+          <div className="player-list">
+            {squadPlayers.map(({ id, p }) => {
+              const inXi = lineup.includes(id);
+              const inBench = bench.includes(id);
+              return (
+                <div key={id} className="player-row" draggable onDragStart={(e) => dragStart(e, id)} onDragEnd={() => setDragId(null)}>
+                  <span className="pos">{p.position}</span>
+                  <span className="name">{p.name}</span>
+                  <AbilityStars ca={p.ca} pa={p.pa} />
+                  <span className="marker">{inXi ? "XI" : inBench ? "Bench" : ""}</span>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
     </div>
