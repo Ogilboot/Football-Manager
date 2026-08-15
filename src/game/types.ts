@@ -250,6 +250,9 @@ export interface NewsItem {
   kind: "result" | "injury" | "suspension" | "transfer" | "award" | "intake" | "info";
   headline: string;
   body: string;
+  detail: string;
+  playerId?: number;
+  teamId?: number;
   read: boolean;
 }
 

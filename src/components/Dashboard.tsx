@@ -1,7 +1,10 @@
+import { useState } from "react";
 import { db } from "../game/data";
 import { boardConfidence, fixturesFor, leagueStandings, nextUserFixture, teamRecentForm, weeklyIncome, weeklyWages } from "../game/career";
 import { formatMoney, formatWage } from "../game/format";
-import type { CareerState, MatchResult } from "../game/types";
+import { newsKindLabel } from "../game/news";
+import type { CareerState, MatchResult, NewsItem } from "../game/types";
+import { NewsDetailModal } from "./NewsDetailModal";
 import { FormDots } from "./ui";
 
 function resultLetter(res: MatchResult, clubId: number): "W" | "D" | "L" {
@@ -16,6 +19,7 @@ interface Props {
 }
 
 export function Dashboard({ career, onPlay }: Props) {
+  const [openNews, setOpenNews] = useState<NewsItem | null>(null);
   const clubId = career.userClubId;
   const club = db.teamById.get(clubId)!;
   const next = nextUserFixture(career);
@@ -85,8 +89,8 @@ export function Dashboard({ career, onPlay }: Props) {
         ) : (
           <div>
             {career.inbox.slice(0, 5).map((n) => (
-              <div key={n.id} className="news-item">
-                <div className="small muted">{n.date}</div>
+              <div key={n.id} className="news-item" onClick={() => setOpenNews(n)}>
+                <div className="small muted">{n.date} · {newsKindLabel(n.kind)}</div>
                 <div className="news-head">{n.headline}</div>
                 <div className="muted small">{n.body}</div>
               </div>
@@ -174,6 +178,8 @@ export function Dashboard({ career, onPlay }: Props) {
           </tbody>
         </table>
       </div>
+
+      {openNews && <NewsDetailModal item={openNews} onClose={() => setOpenNews(null)} />}
     </div>
   );
 }

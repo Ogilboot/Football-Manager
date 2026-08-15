@@ -1,17 +1,11 @@
-import { useEffect } from "react";
-import type { CareerState } from "../game/types";
-
-const KIND_LABELS: Record<string, string> = {
-  result: "Match result",
-  injury: "Injury",
-  suspension: "Suspension",
-  transfer: "Transfer",
-  award: "Award",
-  intake: "Youth intake",
-  info: "Club",
-};
+import { useEffect, useState } from "react";
+import { newsKindLabel } from "../game/news";
+import type { CareerState, NewsItem } from "../game/types";
+import { NewsDetailModal } from "./NewsDetailModal";
 
 export function NewsView({ career, onRead }: { career: CareerState; onRead: () => void }) {
+  const [open, setOpen] = useState<NewsItem | null>(null);
+
   useEffect(() => {
     if (career.inbox.some((n) => !n.read)) onRead();
   }, [career, onRead]);
@@ -24,14 +18,15 @@ export function NewsView({ career, onRead }: { career: CareerState; onRead: () =
       ) : (
         <div>
           {career.inbox.map((n) => (
-            <div key={n.id} className={`news-item ${n.read ? "" : "unread"}`}>
-              <div className="small muted">{n.date} · {KIND_LABELS[n.kind] ?? n.kind}</div>
+            <div key={n.id} className={`news-item ${n.read ? "" : "unread"}`} onClick={() => setOpen(n)}>
+              <div className="small muted">{n.date} · {newsKindLabel(n.kind)}</div>
               <div className="news-head">{n.headline}</div>
               <div className="muted small">{n.body}</div>
             </div>
           ))}
         </div>
       )}
+      {open && <NewsDetailModal item={open} onClose={() => setOpen(null)} />}
     </div>
   );
 }

@@ -429,11 +429,16 @@ th.sortable:hover { color: #fff; }
   font-size: 10px; font-weight: 700; border-radius: 9px; padding: 0 6px;
   margin-left: 5px; line-height: 16px;
 }
-.news-item { padding: 10px 0; border-bottom: 1px solid var(--border); }
+.news-item { padding: 10px 0; border-bottom: 1px solid var(--border); cursor: pointer; }
 .news-item:last-child { border-bottom: none; }
+.news-item:hover .news-head { color: var(--accent); }
 .news-head { font-size: 14px; font-weight: 600; }
 .news-item.unread .news-head { font-weight: 700; }
 .news-item.unread { border-left: 3px solid var(--accent); padding-left: 10px; }
+
+.news-detail-meta { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.news-detail-kind { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--accent); font-weight: 700; }
+.news-detail-extra { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 6px; }
 .award-row {
   display: flex; align-items: baseline; gap: 8px; padding: 6px 0;
   border-bottom: 1px solid var(--border);

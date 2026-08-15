@@ -39,8 +39,8 @@ function caOf(state: CareerState) {
   return (id: number) => getPlayerCurrent(state, id).ca;
 }
 
-function makeNews(date: string, kind: NewsItem["kind"], headline: string, body: string): NewsItem {
-  return { id: String(hashString(`${date}-${kind}-${headline}`)), date, kind, headline, body, read: false };
+function makeNews(date: string, kind: NewsItem["kind"], headline: string, body: string, detail?: string, playerId?: number, teamId?: number): NewsItem {
+  return { id: String(hashString(`${date}-${kind}-${headline}`)), date, kind, headline, body, detail: detail ?? body, playerId, teamId, read: false };
 }
 
 export function markAllNewsRead(state: CareerState): CareerState {
@@ -152,7 +152,17 @@ function weeklyMoraleUpdate(state: CareerState, playedBefore: Map<number, number
     if (p.ca >= 140 && ps.seasonMinutes === (playedBefore.get(id) ?? 0)) morale = Math.max(1, morale - 1);
     if (morale <= 5 && !wantsTransfer) {
       wantsTransfer = true;
-      inbox = [makeNews(state.date, "info", `${p.name} requests a transfer`, `${p.name} is unhappy and has asked to leave the club.`), ...inbox];
+      inbox = [
+        makeNews(
+          state.date,
+          "info",
+          `${p.name} requests a transfer`,
+          `${p.name} is unhappy and has asked to leave the club.`,
+          `${p.name} has handed in a transfer request. The ${p.position} is unhappy with their current situation and has asked the club to consider offers.`,
+          id,
+        ),
+        ...inbox,
+      ];
     }
     if (morale !== ps.morale || wantsTransfer !== ps.wantsTransfer) {
       playerStates = { ...playerStates, [id]: { ...ps, morale, wantsTransfer } };
@@ -198,7 +208,7 @@ export function moveClub(state: CareerState, clubId: number): CareerState {
     manager: { ...state.manager, clubs: [...state.manager.clubs, clubId] },
     sacked: false,
     jobOffers: [],
-    inbox: [makeNews(fresh.date, "info", `Welcome to ${db.teamById.get(clubId)!.name}`, "You have been appointed manager of the club."), ...fresh.inbox],
+    inbox: [makeNews(fresh.date, "info", `Welcome to ${db.teamById.get(clubId)!.name}`, "You have been appointed manager of the club.", `You have been appointed as manager of ${db.teamById.get(clubId)!.name}. The board have tasked you with building on the club's ambitions.`), ...fresh.inbox],
   };
 }
 
@@ -273,7 +283,16 @@ function advanceCompetitions(state: CareerState): CareerState {
     const nextRound = comp.round + 1;
 
     if (nextTeams.length === 1 && nextTeams[0] === state.userClubId) {
-      inbox = [makeNews(state.date, "award", `You won the ${comp.name}!`, `Your side lifted the ${comp.name} trophy.`), ...inbox];
+      inbox = [
+        makeNews(
+          state.date,
+          "award",
+          `You won the ${comp.name}!`,
+          `Your side lifted the ${comp.name} trophy.`,
+          `${db.teamById.get(state.userClubId)!.name} have won the ${comp.name} after a memorable campaign. The trophy is the club's reward for an outstanding run.`,
+        ),
+        ...inbox,
+      ];
       reputation = clamp(reputation + 15, 0, 100);
       trophies += 1;
     }
@@ -436,6 +455,37 @@ function matchResultFromLog(log: MatchLog): MatchResult {
   };
 }
 
+function matchReportDetail(log: MatchLog, result: MatchResult, clubId: number, resultWord: string): string {
+  const home = result.homeId === clubId;
+  const gf = result.homeId === clubId ? result.homeGoals : result.awayGoals;
+  const ga = result.homeId === clubId ? result.awayGoals : result.homeGoals;
+  const club = db.teamById.get(clubId)!;
+  const opp = db.teamById.get(home ? result.awayId : result.homeId)!;
+
+  const myScorers = (home ? result.homeScorers : result.awayScorers).map((s) => `${getPlayer(s.playerId).name} ${s.minute}'`);
+  const myStats = home ? log.home : log.away;
+  const oppStats = home ? log.away : log.home;
+
+  const squad = home ? log.context.home : log.context.away;
+  const myIds = new Set([...squad.lineup.map((s) => s.playerId), ...squad.bench]);
+  let motm: string | null = null;
+  let best = -1;
+  for (const [idStr, ps] of Object.entries(log.players)) {
+    const id = Number(idStr);
+    if (!myIds.has(id)) continue;
+    if (ps.rating > best) {
+      best = ps.rating;
+      motm = getPlayer(id).name;
+    }
+  }
+
+  let detail = `${club.name} ${resultWord} ${opp.name} ${gf}–${ga}. `;
+  detail += myScorers.length ? `Goals: ${myScorers.join(", ")}. ` : "";
+  detail += `Possession ${myStats.possession}%–${oppStats.possession}%, shots ${myStats.shots}–${oppStats.shots}, xG ${myStats.xg.toFixed(2)}–${oppStats.xg.toFixed(2)}. `;
+  if (motm) detail += `Man of the match: ${motm} (${best.toFixed(1)}).`;
+  return detail;
+}
+
 function playMatchday(state: CareerState): { state: CareerState; report: MatchdayReport } {
   if (state.seasonOver) return { state, report: { stage: state.nextStage, date: state.date, results: [], userResult: null, userLog: null } };
 
@@ -528,18 +578,47 @@ function playMatchday(state: CareerState): { state: CareerState; report: Matchda
     const ga = userResult.homeId === state.userClubId ? userResult.awayGoals : userResult.homeGoals;
     const resultWord = gf > ga ? "beat" : gf < ga ? "lost to" : "drew with";
     inbox = [
-      makeNews(state.date, "result", `${club.name} ${gf}–${ga} ${opp.name}`, `You ${resultWord} ${opp.name} on matchday ${stage}.`),
+      makeNews(
+        state.date,
+        "result",
+        `${club.name} ${gf}–${ga} ${opp.name}`,
+        `You ${resultWord} ${opp.name} on matchday ${stage}.`,
+        matchReportDetail(userLog, userResult, state.userClubId, resultWord),
+        undefined,
+        opp.id,
+      ),
       ...inbox,
     ];
 
     const clubPlayers = new Set(state.squads[state.userClubId] ?? []);
     for (const e of userLog.events) {
       if (e.type === "injury" && clubPlayers.has(e.playerId)) {
-        const p = getPlayer(e.playerId);
-        inbox = [makeNews(state.date, "injury", `${p.name} injured`, `${p.name} suffered a ${e.severity} injury and is out.`), ...inbox];
+        const p = getPlayerCurrent(state, e.playerId);
+        const days = playerStates[e.playerId]?.injuryDaysLeft ?? 0;
+        inbox = [
+          makeNews(
+            state.date,
+            "injury",
+            `${p.name} injured`,
+            `${p.name} suffered a ${e.severity} injury and is out.`,
+            `${p.name} (${p.position}) suffered a ${e.severity} injury and is expected to miss approximately ${days} days. The medical team will assess the player before he returns to full training.`,
+            e.playerId,
+          ),
+          ...inbox,
+        ];
       } else if (e.type === "card" && e.card === "red" && clubPlayers.has(e.playerId)) {
-        const p = getPlayer(e.playerId);
-        inbox = [makeNews(state.date, "suspension", `${p.name} sent off`, `${p.name} was sent off and will be suspended.`), ...inbox];
+        const p = getPlayerCurrent(state, e.playerId);
+        inbox = [
+          makeNews(
+            state.date,
+            "suspension",
+            `${p.name} sent off`,
+            `${p.name} was sent off and will be suspended.`,
+            `${p.name} (${p.position}) was shown a red card and will now serve a suspension, ruling them out of the next match.`,
+            e.playerId,
+          ),
+          ...inbox,
+        ];
       }
     }
   }
@@ -671,7 +750,17 @@ export function buyPlayer(state: CareerState, playerId: number): TransferOutcome
       freeAgents: state.freeAgents.filter((id) => id !== playerId),
       balance: state.balance - fee,
       transfers: [...state.transfers, transfer],
-      inbox: [makeNews(state.date, "transfer", `Signed ${player.name}`, `You signed ${player.name} for ${fee.toLocaleString("en-GB")}.`), ...state.inbox],
+      inbox: [
+        makeNews(
+          state.date,
+          "transfer",
+          `Signed ${player.name}`,
+          `You signed ${player.name} for ${fee.toLocaleString("en-GB")}.`,
+          `${db.teamById.get(state.userClubId)!.name} have completed the signing of ${player.name} (${player.position}, age ${player.age}) for ${fee.toLocaleString("en-GB")}.`,
+          playerId,
+        ),
+        ...state.inbox,
+      ],
     },
   };
 }
@@ -708,7 +797,18 @@ export function sellPlayer(state: CareerState, playerId: number): TransferOutcom
       squads,
       balance: state.balance + fee,
       transfers: [...state.transfers, transfer],
-      inbox: [makeNews(state.date, "transfer", `Sold ${player.name}`, `${player.name} joined ${buyer.name} for ${fee.toLocaleString("en-GB")}.`), ...state.inbox],
+      inbox: [
+        makeNews(
+          state.date,
+          "transfer",
+          `Sold ${player.name}`,
+          `${player.name} joined ${buyer.name} for ${fee.toLocaleString("en-GB")}.`,
+          `${db.teamById.get(state.userClubId)!.name} have sold ${player.name} (${player.position}, age ${player.age}) to ${buyer.name} for ${fee.toLocaleString("en-GB")}.`,
+          playerId,
+          buyer.id,
+        ),
+        ...state.inbox,
+      ],
     },
   };
 }
@@ -739,7 +839,17 @@ export function releasePlayer(state: CareerState, playerId: number): TransferOut
       squads,
       transfers: [...state.transfers, transfer],
       freeAgents: [...state.freeAgents, playerId],
-      inbox: [makeNews(state.date, "transfer", `Released ${player.name}`, `${player.name} has been released.`), ...state.inbox],
+      inbox: [
+        makeNews(
+          state.date,
+          "transfer",
+          `Released ${player.name}`,
+          `${player.name} has been released.`,
+          `${db.teamById.get(state.userClubId)!.name} have released ${player.name} (${player.position}, age ${player.age}). The player is now a free agent.`,
+          playerId,
+        ),
+        ...state.inbox,
+      ],
     },
   };
 }
@@ -815,21 +925,48 @@ export function finishSeason(state: CareerState): CareerState {
   const potS = playerOfSeason(state);
   const club = db.teamById.get(state.userClubId)!;
   const awardNews: NewsItem[] = [
-    makeNews(state.date, "award", `${club.name} finish ${position}`, `You finished ${position} in the league and earned ${prize.toLocaleString("en-GB")} in prize money.`),
+    makeNews(
+      state.date,
+      "award",
+      `${club.name} finish ${position}`,
+      `You finished ${position} in the league and earned ${prize.toLocaleString("en-GB")} in prize money.`,
+      `${club.name} completed the season in ${position} place, earning ${prize.toLocaleString("en-GB")} in prize money to add to the transfer budget.`,
+    ),
   ];
   if (boot) {
     const p = getPlayer(boot.playerId);
-    awardNews.push(makeNews(state.date, "award", `Golden Boot: ${p.name}`, `${p.name} won the Golden Boot with ${boot.goals} goals.`));
+    const bootClub = playerClub(state, boot.playerId);
+    awardNews.push(
+      makeNews(
+        state.date,
+        "award",
+        `Golden Boot: ${p.name}`,
+        `${p.name} won the Golden Boot with ${boot.goals} goals.`,
+        `${p.name} won the Golden Boot after scoring ${boot.goals} league goals this season${bootClub != null ? ` for ${db.teamById.get(bootClub)!.name}` : ""}.`,
+        boot.playerId,
+      ),
+    );
   }
   if (potS) {
     const p = getPlayer(potS.playerId);
-    awardNews.push(makeNews(state.date, "award", `Player of the Season: ${p.name}`, `${p.name} was voted Player of the Season (${potS.rating.toFixed(2)} avg rating).`));
+    awardNews.push(
+      makeNews(
+        state.date,
+        "award",
+        `Player of the Season: ${p.name}`,
+        `${p.name} was voted Player of the Season (${potS.rating.toFixed(2)} avg rating).`,
+        `${p.name} was voted Player of the Season after averaging a match rating of ${potS.rating.toFixed(2)} across the campaign.`,
+        potS.playerId,
+      ),
+    );
   }
 
   for (const id of runAiManagerChanges(leagueStandings(state).map((r) => r.teamId))) {
     if (id === state.userClubId) continue;
     const c = db.teamById.get(id)!;
-    awardNews.push(makeNews(state.date, "info", `${c.name} appoint a new manager`, `${c.name} have parted company with their manager after a disappointing season.`));
+    awardNews.push(
+      makeNews(state.date, "info", `${c.name} appoint a new manager`, `${c.name} have parted company with their manager after a disappointing season.`, `${c.name} have dismissed their manager after a season that fell well short of expectations.`),
+    );
   }
 
   const objectiveMet = position <= state.boardObjective.targetPos;
@@ -841,6 +978,7 @@ export function finishSeason(state: CareerState): CareerState {
       "award",
       `Board verdict: ${objectiveMet ? "objective met" : "objective failed"}`,
       `The board expected you to "${state.boardObjective.description}". You finished ${position}.`,
+      `The board set a target of "${state.boardObjective.description}" for the season. Finishing in ${position} place means the objective has been ${objectiveMet ? "met" : "failed"}.`,
     ),
   );
 
@@ -855,7 +993,15 @@ export function finishSeason(state: CareerState): CareerState {
   const sacked = reputation <= 15;
   const jobOffers = generateJobOffers(state, reputation, sacked);
   if (sacked) {
-    awardNews.push(makeNews(state.date, "info", `Sacked by ${club.name}`, "The board have relieved you of your duties."));
+    awardNews.push(
+      makeNews(
+        state.date,
+        "info",
+        `Sacked by ${club.name}`,
+        "The board have relieved you of your duties.",
+        `After a difficult season, the board of ${club.name} have taken the decision to relieve you of your duties as manager.`,
+      ),
+    );
   }
 
   return {
@@ -964,6 +1110,9 @@ function applyAiTransfers(state: CareerState, seasonStartYear: number): CareerSt
         "transfer",
         `${to.name} sign ${p.name}`,
         from ? `${from.name} sold ${p.name} to ${to.name} for ${t.fee.toLocaleString("en-GB")}.` : `${to.name} signed ${p.name} on a free transfer.`,
+        `${p.name} (${p.position}) has completed a ${t.fee ? `${t.fee.toLocaleString("en-GB")} ` : "free "}move${from ? ` from ${from.name}` : ""} to ${to.name}.`,
+        t.playerId,
+        t.toTeamId!,
       );
     });
   return { ...state, squads: ai.squads, freeAgents: ai.freeAgents, inbox: [...aiNews, ...state.inbox] };
@@ -994,7 +1143,19 @@ export function startNextSeason(state: CareerState): CareerState {
   afterAi = { ...afterAi, squads: contractResult.squads, freeAgents: contractResult.freeAgents, contracts: contractResult.contracts };
   const contractNews: NewsItem[] = contractResult.released
     .filter((r) => getPlayer(r.playerId).ca >= 150)
-    .map((r) => makeNews(START_DATE, "transfer", `${getPlayer(r.playerId).name} leaves ${db.teamById.get(r.teamId)!.name}`, `${getPlayer(r.playerId).name} has left ${db.teamById.get(r.teamId)!.name} after their contract was not renewed.`));
+    .map((r) => {
+      const p = getPlayer(r.playerId);
+      const team = db.teamById.get(r.teamId)!;
+      return makeNews(
+        START_DATE,
+        "transfer",
+        `${p.name} leaves ${team.name}`,
+        `${p.name} has left ${team.name} after their contract was not renewed.`,
+        `${p.name} (${p.position}) has left ${team.name} after the club opted not to renew the veteran's contract.`,
+        r.playerId,
+        r.teamId,
+      );
+    });
   afterAi = { ...afterAi, inbox: [...contractNews, ...afterAi.inbox] };
 
   const squads = afterAi.squads;
@@ -1006,9 +1167,17 @@ export function startNextSeason(state: CareerState): CareerState {
   const userSquad = rawSquad.filter((id) => !leavers.includes(id));
   for (const id of leavers) if (!freeAgents.includes(id)) freeAgents.push(id);
   squads[finished.userClubId] = userSquad;
-  const expiryNews = leavers.map((id) =>
-    makeNews(START_DATE, "transfer", `${getPlayer(id).name} left the club`, `${getPlayer(id).name}'s contract expired and they departed on a free transfer.`),
-  );
+  const expiryNews = leavers.map((id) => {
+    const p = getPlayer(id);
+    return makeNews(
+      START_DATE,
+      "transfer",
+      `${p.name} left the club`,
+      `${p.name}'s contract expired and they departed on a free transfer.`,
+      `${p.name} (${p.position}) has left ${db.teamById.get(finished.userClubId)!.name} after their contract expired, departing on a free transfer.`,
+      id,
+    );
+  });
 
   // 3) youth intake for every league club
   const generatedPlayers = { ...finished.generatedPlayers };
@@ -1037,6 +1206,11 @@ export function startNextSeason(state: CareerState): CareerState {
     if (teamId !== finished.userClubId) intakeFor(teamId, 2);
   }
 
+  const intakeDetail = intakeIds.map((id) => {
+    const p = getPlayer(id);
+    return `${p.name} (${p.position})`;
+  }).join(", ");
+
   return {
     ...finished,
     seasonStartYear: year,
@@ -1058,7 +1232,17 @@ export function startNextSeason(state: CareerState): CareerState {
     squads,
     freeAgents,
     contracts: afterAi.contracts,
-    inbox: [makeNews(START_DATE, "intake", "New youth intake", `${intakeIds.length} youth prospects have joined the academy squad.`), ...expiryNews, ...afterAi.inbox],
+    inbox: [
+      makeNews(
+        START_DATE,
+        "intake",
+        "New youth intake",
+        `${intakeIds.length} youth prospects have joined the academy squad.`,
+        `Your academy has produced ${intakeIds.length} new prospects: ${intakeDetail}. They will join the youth ranks and can develop into first-team players.`,
+      ),
+      ...expiryNews,
+      ...afterAi.inbox,
+    ],
   };
 }
 
