@@ -1,7 +1,8 @@
 import { CAT_ATTRS, moraleLabel } from "../game/career";
+import { nationFlag } from "../game/nations";
 import { formatMoney, formatWage } from "../game/format";
 import type { Category, Contract, Personality, Player, PlayerAttrs, PlayerState } from "../game/types";
-import { CategoryBadge, RatingDots } from "./ui";
+import { AbilityStars, CategoryBadge, RatingDots } from "./ui";
 
 const TRAINABLE: [keyof PlayerAttrs, string][] = [
   ["finishing", "Finishing"],
@@ -142,7 +143,7 @@ export function PlayerPanel({ player, state, onSetTraining, contract, seasonYear
             {player.name} <CategoryBadge cat={player.category} />
           </div>
           <div className="muted small">
-            {player.nation ?? ""} · Age {player.age}
+            {nationFlag(player.nation)} {player.nation ?? ""} · Age {player.age}
           </div>
         </div>
         {state && <StatusTag state={state} />}
@@ -155,8 +156,8 @@ export function PlayerPanel({ player, state, onSetTraining, contract, seasonYear
         <div className="cell"><div className="k">Weak foot</div><div className="v">{player.weakFoot}★</div></div>
         <div className="cell"><div className="k">Value</div><div className="v">{formatMoney(player.value)}</div></div>
         <div className="cell"><div className="k">Wage</div><div className="v" style={{ fontSize: 13 }}>{formatWage(player.wage)}</div></div>
-        <div className="cell"><div className="k">Current ability</div><div className="v">{player.ca}</div></div>
-        <div className="cell"><div className="k">Potential</div><div className="v">{player.pa}</div></div>
+        <div className="cell"><div className="k">Ability</div><div className="v" style={{ fontSize: 13 }}><AbilityStars ca={player.ca} pa={player.pa} /></div></div>
+        <div className="cell"><div className="k">Skill moves</div><div className="v">{player.skillMoves}★</div></div>
       </div>
 
       <div className="panel-title" style={{ marginBottom: 6 }}>Positions</div>

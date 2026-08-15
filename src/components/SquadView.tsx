@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
 import { getContract, getPlayerCurrent, getPlayerState, happinessReasons, interactWithPlayer, releasePlayer, renewContract, sellPlayer, setTraining } from "../game/career";
+import { nationFlag } from "../game/nations";
 import { formatMoney } from "../game/format";
 import type { CareerState } from "../game/types";
 import { PlayerPanel } from "./PlayerPanel";
-import { RatingBadge, RatingDots } from "./ui";
+import { AbilityStars, RatingDots } from "./ui";
 
 const CAT_ORDER: Record<string, number> = { GK: 0, DF: 1, MF: 2, FW: 3 };
 
@@ -50,7 +51,7 @@ export function SquadView({ career, apply }: Props) {
         <table className="table">
           <thead>
             <tr>
-              <th>Name</th><th>Pos</th><th className="num">CA</th><th className="num">PA</th>
+              <th>Name</th><th>Nat</th><th>Pos</th><th>Ability</th>
               <th className="num">Cond</th><th>Form</th><th className="num">Age</th><th>Status</th>
             </tr>
           </thead>
@@ -58,9 +59,9 @@ export function SquadView({ career, apply }: Props) {
             {squad.map(({ id, p, st }) => (
               <tr key={id} className="row-click" onClick={() => setSelected(id)}>
                 <td>{p.name}</td>
+                <td title={p.nation ?? ""}>{nationFlag(p.nation) ?? "—"}</td>
                 <td>{p.position}</td>
-                <td className="num"><RatingBadge ca={p.ca} /></td>
-                <td className="num dim">{p.pa}</td>
+                <td><AbilityStars ca={p.ca} pa={p.pa} /></td>
                 <td className={`num ${st.condition < 70 ? "cond-low" : "dim"}`}>{Math.round(st.condition)}</td>
                 <td><RatingDots form={st.form} /></td>
                 <td className="num">{p.age}</td>

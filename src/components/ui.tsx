@@ -39,3 +39,17 @@ export function RatingDots({ form }: { form: number[] }) {
     </span>
   );
 }
+
+export function AbilityStars({ ca, pa }: { ca: number; pa: number }) {
+  const caStars = Math.max(1, Math.min(5, Math.round(ca / 40)));
+  const paStars = Math.max(1, Math.min(5, Math.round(pa / 40)));
+  return (
+    <span className="ability-stars" title={`Current ability ${ca} · Potential ${pa}`}>
+      {[1, 2, 3, 4, 5].map((i) => (
+        <span key={i} className={i <= caStars ? "gold" : i <= paStars ? "pot" : "dim"}>
+          {i <= caStars ? "★" : "☆"}
+        </span>
+      ))}
+    </span>
+  );
+}

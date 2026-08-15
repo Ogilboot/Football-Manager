@@ -341,6 +341,11 @@ td.dim { color: var(--text-dim); }
 .form-dot.D { background: #8b98a9; }
 .form-dot.L { background: #e5533d; }
 
+.ability-stars { white-space: nowrap; letter-spacing: 1px; }
+.ability-stars .gold { color: #f0c75e; }
+.ability-stars .pot { color: #8b98a9; }
+.ability-stars .dim { color: #3a4a5c; }
+
 .page-head { margin-bottom: 16px; }
 .page-head h2 { margin: 0 0 2px; font-size: 18px; color: #fff; }
 .page-head .sub { color: var(--text-dim); font-size: 12px; }

@@ -1,10 +1,11 @@
 import { useMemo, useState } from "react";
 import { db } from "../game/data";
 import { buildPlayerClubMap, buyPlayer, getPlayerCurrent } from "../game/career";
+import { nationFlag } from "../game/nations";
 import { formatMoney } from "../game/format";
 import type { CareerState } from "../game/types";
 import { PlayerPanel } from "./PlayerPanel";
-import { RatingBadge } from "./ui";
+import { AbilityStars } from "./ui";
 
 interface Props {
   career: CareerState;
@@ -26,12 +27,12 @@ export function TransfersView({ career, apply }: Props) {
   const clubOf = useMemo(() => buildPlayerClubMap(career), [career]);
 
   const results = useMemo(() => {
-    const list: { id: number; ca: number; pa: number; value: number; age: number; clubId: number | null; pos: string; cat: string; name: string; inSquad: boolean }[] = [];
+    const list: { id: number; ca: number; pa: number; value: number; age: number; clubId: number | null; pos: string; cat: string; name: string; nation: string | null; inSquad: boolean }[] = [];
     const mySquad = career.squads[career.userClubId] ?? [];
     for (const id of db.players.keys()) {
       const p = getPlayerCurrent(career, id);
       const clubId = clubOf.get(id) ?? null;
-      list.push({ id, ca: p.ca, pa: p.pa, value: p.value, age: p.age, clubId, pos: p.position, cat: p.category, name: p.name, inSquad: mySquad.includes(id) });
+      list.push({ id, ca: p.ca, pa: p.pa, value: p.value, age: p.age, clubId, pos: p.position, cat: p.category, name: p.name, nation: p.nation, inSquad: mySquad.includes(id) });
     }
     const q = query.trim().toLowerCase();
     const filtered = list.filter((x) => {
@@ -98,18 +99,18 @@ export function TransfersView({ career, apply }: Props) {
         <table className="table">
           <thead>
             <tr>
-              <th>Name</th><th>Pos</th><th>Club</th><th className="num">CA</th>
-              <th className="num">PA</th><th className="num">Age</th><th className="num">Value</th><th></th>
+              <th>Name</th><th>Nat</th><th>Pos</th><th>Club</th><th>Ability</th>
+              <th className="num">Age</th><th className="num">Value</th><th></th>
             </tr>
           </thead>
           <tbody>
             {shown.map((x) => (
               <tr key={x.id} className="row-click" onClick={() => setSelected(x.id)}>
                 <td>{x.name}</td>
+                <td title={x.nation ?? ""}>{nationFlag(x.nation) ?? "—"}</td>
                 <td>{x.pos}</td>
                 <td className="dim">{x.inSquad ? "Your squad" : x.clubId != null ? db.teamById.get(x.clubId)!.name : "Free Agent"}</td>
-                <td className="num"><RatingBadge ca={x.ca} /></td>
-                <td className="num dim">{x.pa}</td>
+                <td><AbilityStars ca={x.ca} pa={x.pa} /></td>
                 <td className="num">{x.age}</td>
                 <td className="num">{formatMoney(x.value)}</td>
                 <td className="num">
