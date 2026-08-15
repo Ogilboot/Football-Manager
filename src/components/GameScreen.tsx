@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { db } from "../game/data";
-import { advanceUntilMatch, clearLatestIntake, clearSave, finishSeason, markAllNewsRead, startNextSeason, userPosition, type ContinueResult } from "../game/career";
+import { advance, advanceUntilMatch, clearLatestIntake, clearSave, finishSeason, markAllNewsRead, startNextSeason, userPosition, type ContinueResult } from "../game/career";
 import { formatDate, formatMoney } from "../game/format";
 import type { CareerState, MatchdayReport } from "../game/types";
 import type { MatchLog } from "../game/matchTypes";
 import { ContinuingScreen } from "./ContinuingScreen";
 import { Dashboard } from "./Dashboard";
+import { MatchdayScreen } from "./MatchdayScreen";
 import { FixturesView } from "./FixturesView";
 import { ManagerCareerModal } from "./ManagerCareerModal";
 import { ManagerView } from "./ManagerView";
@@ -46,6 +47,7 @@ export function GameScreen({ career, apply, onExit }: Props) {
   const [report, setReport] = useState<MatchdayReport | null>(null);
   const [watchLog, setWatchLog] = useState<MatchLog | null>(null);
   const [continuing, setContinuing] = useState<ContinueResult | null>(null);
+  const [preMatch, setPreMatch] = useState<CareerState | null>(null);
 
   const club = db.teamById.get(career.userClubId)!;
   const position = userPosition(career);
@@ -60,22 +62,26 @@ export function GameScreen({ career, apply, onExit }: Props) {
   const playNext = () => {
     if (career.seasonOver) return;
     const result = advanceUntilMatch(career);
-    if (result.days === 0) complete(result);
+    if (result.days === 0) setPreMatch(result.state);
     else setContinuing(result);
-  };
-
-  const complete = (c: ContinueResult) => {
-    apply(c.state);
-    if (c.report) {
-      setReport(c.report);
-      setWatchLog(c.report.userLog);
-    }
   };
 
   const finishContinue = () => {
     const c = continuing;
     setContinuing(null);
-    if (c) complete(c);
+    if (c) setPreMatch(c.state);
+  };
+
+  const startMatch = () => {
+    const pm = preMatch;
+    setPreMatch(null);
+    if (!pm) return;
+    const { state, report: r } = advance(pm);
+    apply(state);
+    if (r) {
+      setReport(r);
+      setWatchLog(r.userLog);
+    }
   };
 
   return (
@@ -131,6 +137,8 @@ export function GameScreen({ career, apply, onExit }: Props) {
       </div>
 
       {continuing && <ContinuingScreen result={continuing} onDone={finishContinue} />}
+
+      {preMatch && <MatchdayScreen state={preMatch} setState={setPreMatch} onStart={startMatch} />}
 
       {watchLog && (
         <MatchView log={watchLog} userClubId={career.userClubId} onClose={() => setWatchLog(null)} />

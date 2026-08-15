@@ -458,6 +458,79 @@ export function nextUserFixture(state: CareerState): Fixture | null {
   return upcoming.sort((a, b) => a.stage - b.stage)[0] ?? null;
 }
 
+// ---- opposition report ----------------------------------------------------
+
+const CATEGORY_LABELS: Record<Category, string> = { GK: "goalkeeping", DF: "defence", MF: "midfield", FW: "attack" };
+
+function ordinal(n: number): string {
+  const rem = n % 100;
+  if (rem >= 11 && rem <= 13) return `${n}th`;
+  switch (n % 10) {
+    case 1: return `${n}st`;
+    case 2: return `${n}nd`;
+    case 3: return `${n}rd`;
+    default: return `${n}th`;
+  }
+}
+
+export interface OppositionReport {
+  teamId: number;
+  teamName: string;
+  formationId: string;
+  strength: number;
+  position: number | null;
+  form: ("W" | "D" | "L")[];
+  keyPlayers: { name: string; position: string; ca: number }[];
+  dangerMan: { name: string; goals: number } | null;
+  weakArea: string;
+  summary: string;
+}
+
+export function oppositionReport(state: CareerState, fixture: Fixture): OppositionReport {
+  const oppId = fixture.homeId === state.userClubId ? fixture.awayId : fixture.homeId;
+  const opp = db.teamById.get(oppId)!;
+  const squad = state.squads[oppId] ?? db.squadOf.get(oppId) ?? [];
+  const caOf = (id: number) => getPlayerCurrent(state, id).ca;
+  const strength = teamStrength(squad, caOf);
+  const tactics = aiPickTactics(squad, caOf, mulberry32(hashString(`away-${fixture.id}`)));
+
+  const standings = leagueStandings(state);
+  const posIdx = standings.findIndex((r) => r.teamId === oppId);
+  const position = posIdx >= 0 ? posIdx + 1 : null;
+  const form = teamRecentForm(state, oppId, 5);
+
+  const keyPlayers = [...squad]
+    .sort((a, b) => caOf(b) - caOf(a))
+    .slice(0, 3)
+    .map((id) => {
+      const p = getPlayer(id);
+      return { name: p.name, position: p.position, ca: p.ca };
+    });
+
+  const danger = Object.entries(state.seasonStats)
+    .filter(([id]) => squad.includes(Number(id)))
+    .map(([id, s]) => ({ id: Number(id), goals: s.goals }))
+    .sort((a, b) => b.goals - a.goals)[0];
+  const dangerMan = danger && danger.goals > 0 ? { name: getPlayer(danger.id).name, goals: danger.goals } : null;
+
+  let weakArea: Category = "MF";
+  let weakScore = Infinity;
+  for (const c of ["GK", "DF", "MF", "FW"] as Category[]) {
+    const group = squad.filter((id) => getPlayer(id).category === c);
+    if (!group.length) continue;
+    const avg = group.reduce((s, id) => s + caOf(id), 0) / group.length;
+    if (avg < weakScore) { weakScore = avg; weakArea = c; }
+  }
+
+  const poorForm = form.filter((x) => x === "L").length >= 2;
+  const summary = `${opp.name} set up in a ${tactics.formationId} and ${position ? `sit ${ordinal(position)}` : "are unranked"}. `
+    + (poorForm ? "They are struggling for form. " : "They are in decent shape. ")
+    + (dangerMan ? `Watch ${dangerMan.name}, their main threat with ${dangerMan.goals} goals. ` : "They lack a clear goalscorer. ")
+    + `Their ${CATEGORY_LABELS[weakArea]} looks like the weak area to exploit.`;
+
+  return { teamId: oppId, teamName: opp.name, formationId: tactics.formationId, strength, position, form, keyPlayers, dangerMan, weakArea: CATEGORY_LABELS[weakArea], summary };
+}
+
 // ---- matchday simulation --------------------------------------------------
 
 function matchResultFromLog(log: MatchLog): MatchResult {
@@ -714,17 +787,16 @@ export function advance(state: CareerState): { state: CareerState; report: Match
 
 export interface ContinueResult {
   state: CareerState;
-  report: MatchdayReport | null;
   news: NewsItem[];
   startDate: string;
   endDate: string;
   days: number;
 }
 
-// Advance through the days leading up to the next match (collecting the
-// flavour/preview news generated along the way), then play that match. The
-// returned `news` is only the lead-up news; the result is revealed via the
-// match view, not listed here.
+// Advance through the days leading up to the next match, collecting the
+// flavour/preview news generated along the way. Stops on the eve of the
+// match so the manager can review the opposition and confirm the squad
+// before the match is played.
 export function advanceUntilMatch(state: CareerState): ContinueResult {
   const startDate = state.date;
   const startCount = state.inbox.length;
@@ -738,8 +810,7 @@ export function advanceUntilMatch(state: CareerState): ContinueResult {
   }
 
   const leadUpNews = cur.inbox.slice(0, cur.inbox.length - startCount).reverse();
-  const { state: final, report } = advance(cur);
-  return { state: final, report, news: leadUpNews, startDate, endDate: cur.date, days };
+  return { state: cur, news: leadUpNews, startDate, endDate: cur.date, days };
 }
 
 // ---- scouting & player knowledge -------------------------------------------
