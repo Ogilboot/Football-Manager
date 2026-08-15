@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { db } from "../src/game/data";
-import { advanceWeek, buyPlayer, markAllNewsRead, newCareer } from "../src/game/career";
+import { advanceWeek, askingPriceFor, contractDemand, makeTransferBid, markAllNewsRead, newCareer } from "../src/game/career";
 
 const club = db.teams[0];
 
@@ -21,11 +21,13 @@ test("advanceWeek adds a match result news item", () => {
 
 test("transfers add news items", () => {
   let state = newCareer(club.id, "t");
-  const target = [...db.players.keys()].find((id) => !state.squads[state.userClubId].includes(id) && db.players.get(id)!.value <= state.balance);
-  assert.ok(target != null, "should find an affordable player");
+  const target = [...db.players.keys()]
+    .filter((id) => !state.squads[state.userClubId].includes(id))
+    .sort((a, b) => db.players.get(a)!.value - db.players.get(b)!.value)[0];
+  assert.ok(target != null, "should find a player");
   const before = state.inbox.length;
-  const out = buyPlayer(state, target);
-  assert.ok(out.ok);
+  const out = makeTransferBid(state, target, askingPriceFor(state, target), contractDemand(state, target, 3), 3);
+  assert.ok(out.ok, out.message);
   assert.ok(out.state.inbox.length > before, "transfer should add news");
   assert.equal(out.state.inbox[0].kind, "transfer");
 });

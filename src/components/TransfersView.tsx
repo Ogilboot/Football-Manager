@@ -1,11 +1,12 @@
 import { useMemo, useState } from "react";
 import { db } from "../game/data";
-import { ALL_POSITIONS, addToShortlist, buildPlayerClubMap, buyPlayer, comfortablePositions, getPlayerCurrent, isShortlisted, removeFromShortlist, scoutKnowledgeOf } from "../game/career";
+import { ALL_POSITIONS, addToShortlist, buildPlayerClubMap, comfortablePositions, getPlayerCurrent, isShortlisted, removeFromShortlist, scoutKnowledgeOf } from "../game/career";
 import { nationFlag } from "../game/nations";
 import { formatMoney } from "../game/format";
 import { knowledgeLevel, reputationMinCa, REPUTATION_TIERS, revealCa, type KnowledgeLevel } from "../game/scouting";
 import type { CareerState, PlayerAttrs } from "../game/types";
 import { sortBy, useSort } from "../hooks/useSort";
+import { BidModal } from "./BidModal";
 import { PlayerPanel } from "./PlayerPanel";
 import { ScoutedStars, SortHeader } from "./ui";
 
@@ -53,6 +54,7 @@ export function TransfersView({ career, apply }: Props) {
   const [scoutFilter, setScoutFilter] = useState<"all" | "shortlisted" | "scouted" | "unscouted">("all");
   const [limit, setLimit] = useState(PAGE);
   const [selected, setSelected] = useState<number | null>(null);
+  const [bidding, setBidding] = useState<number | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
   const { sort, toggle } = useSort("ca");
 
@@ -110,9 +112,8 @@ export function TransfersView({ career, apply }: Props) {
   const shown = results.slice(0, limit);
 
   const doBuy = (id: number) => {
-    const out = buyPlayer(career, id);
-    if (out.ok) { apply(out.state); setSelected(null); setFeedback(out.message); }
-    else setFeedback(out.message);
+    setSelected(null);
+    setBidding(id);
   };
 
   const doScout = (id: number) => {
@@ -247,11 +248,21 @@ export function TransfersView({ career, apply }: Props) {
               {selected != null && isShortlisted(career, selected) && (
                 <button className="btn" onClick={() => doStopScout(selected)}>Stop scouting</button>
               )}
-              <button className="btn primary" onClick={() => doBuy(selected)}>Buy for {formatMoney(selectedPlayer.value)}</button>
+              <button className="btn primary" onClick={() => doBuy(selected)}>Make offer</button>
               <button className="btn small" onClick={() => setSelected(null)}>Close</button>
             </div>
           </div>
         </div>
+      )}
+
+      {bidding != null && (
+        <BidModal
+          career={career}
+          playerId={bidding}
+          playerName={getPlayerCurrent(career, bidding).name}
+          onClose={() => setBidding(null)}
+          apply={apply}
+        />
       )}
     </div>
   );

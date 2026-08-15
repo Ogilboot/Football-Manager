@@ -1,9 +1,10 @@
 import { addGeneratedPlayer, db, GENERATED_ID_START, getPlayer, removeGeneratedPlayers, syncGeneratedPlayers } from "./data";
-import { runAiContracts, runAiManagerChanges, runAiTransfers } from "./ai";
+import { aiBudgetFor, runAiContracts, runAiManagerChanges, runAiTransfers, SQUAD_TARGETS } from "./ai";
 import { generateFixtures, pairKnockout } from "./fixtures";
 import { addDays } from "./format";
 import { simulateMatch } from "./matchEngine";
 import { generatePersonality } from "./personality";
+import { askingPrice, evaluateContractOffer, reputationFromStrength, wageDemand, willJoin } from "./negotiation";
 import { getPlayerState, isAvailable, matchPerformance, resolveWeekStates } from "./playerState";
 import { hashString, mulberry32, type Rng } from "./rng";
 import { clamp } from "./scales";
@@ -85,16 +86,31 @@ export interface ContractOutcome {
   state: CareerState;
 }
 
-export function renewContract(state: CareerState, playerId: number): ContractOutcome {
-  const contract = getContract(state, playerId);
+// The player's weekly wage demand for a contract of the given length
+// (Infinity when they refuse to negotiate, e.g. after a transfer request).
+export function contractDemand(state: CareerState, playerId: number, lengthYears: number): number {
   const p = getPlayerCurrent(state, playerId);
-  const asking = Math.max(contract.wage, Math.round(p.ca * 2000));
-  const renewed: Contract = { expirySeason: state.seasonStartYear + 4, wage: asking };
-  return {
-    ok: true,
-    message: `${p.name} signed until ${renewed.expirySeason} (${asking.toLocaleString("en-GB")}/wk)`,
-    state: { ...state, contracts: { ...state.contracts, [playerId]: renewed } },
-  };
+  const ps = getPlayerState(state, playerId);
+  return wageDemand(p, ps, getContract(state, playerId), state.seasonStartYear, lengthYears);
+}
+
+export function negotiateContract(state: CareerState, playerId: number, wage: number, lengthYears: number): ContractOutcome {
+  const p = getPlayerCurrent(state, playerId);
+  const ps = getPlayerState(state, playerId);
+  const contract = getContract(state, playerId);
+  const demand = wageDemand(p, ps, contract, state.seasonStartYear, lengthYears);
+  const result = evaluateContractOffer(demand, wage);
+
+  if (!result.accepted) {
+    const message = demand === Infinity
+      ? result.message
+      : `${p.name} rejected the offer — they want ${result.counter.toLocaleString("en-GB")}/wk.`;
+    return { ok: false, message, state };
+  }
+
+  const renewed: Contract = { expirySeason: state.seasonStartYear + lengthYears, wage };
+  const message = result.message || `${p.name} signed until ${renewed.expirySeason} (${wage.toLocaleString("en-GB")}/wk).`;
+  return { ok: true, message, state: { ...state, contracts: { ...state.contracts, [playerId]: renewed } } };
 }
 
 function applyWeeklyFinance(state: CareerState): CareerState {
@@ -775,22 +791,63 @@ export interface TransferOutcome {
   state: CareerState;
 }
 
-export function buyPlayer(state: CareerState, playerId: number): TransferOutcome {
+export function askingPriceFor(state: CareerState, playerId: number): number {
+  if (state.freeAgents.includes(playerId)) return 0;
+  const seller = playerClub(state, playerId);
+  const p = getPlayerCurrent(state, playerId);
+  if (seller == null) return p.value;
+  const squad = state.squads[seller] ?? [];
+  const str = teamStrength(squad, (id) => getPlayerCurrent(state, id).ca);
+  return askingPrice(p, getContract(state, playerId), str, state.seasonStartYear);
+}
+
+export function makeTransferBid(state: CareerState, playerId: number, fee: number, wage: number, lengthYears: number): TransferOutcome {
   if (state.squads[state.userClubId]?.includes(playerId)) {
     return { ok: false, message: "Already in your squad", state };
   }
-  const player = getPlayer(playerId);
+  const player = getPlayerCurrent(state, playerId);
+  const ps = getPlayerState(state, playerId);
+  const contract = getContract(state, playerId);
   const isFree = state.freeAgents.includes(playerId);
-  const fee = isFree ? 0 : player.value;
+  const seller = playerClub(state, playerId);
+
+  const ask = askingPriceFor(state, playerId);
+  if (seller != null && fee < Math.round(ask * 0.85)) {
+    return { ok: false, message: `${db.teamById.get(seller)!.name} rejected the bid — they want around ${ask.toLocaleString("en-GB")}.`, state };
+  }
+  if (seller == null && !isFree && fee < ask) {
+    return { ok: false, message: `The club want ${ask.toLocaleString("en-GB")} for the player.`, state };
+  }
+
+  const targetStr = teamStrength(state.squads[state.userClubId] ?? [], (id) => getPlayerCurrent(state, id).ca);
+  const currentClubId = isFree ? null : playerClub(state, playerId) ?? playerClubStatic(playerId);
+  const currentSquad = currentClubId != null ? state.squads[currentClubId] ?? db.squadOf.get(currentClubId) ?? [] : [];
+  const currentStr = currentClubId != null ? teamStrength(currentSquad, (id) => getPlayer(id).ca) : 0;
+
+  const wj = willJoin({
+    player,
+    morale: ps.morale,
+    wantsTransfer: ps.wantsTransfer,
+    currentWage: contract.wage,
+    currentClubStrength: currentStr,
+    targetClubStrength: targetStr,
+    targetReputation: state.reputation,
+    offeredWage: wage,
+  });
+  if (!wj.willing) return { ok: false, message: wj.reason, state };
+
+  const demand = wageDemand(player, ps, contract, state.seasonStartYear, lengthYears);
+  const er = evaluateContractOffer(demand, wage);
+  if (!er.accepted) {
+    return { ok: false, message: `${player.name} rejected the contract — they want ${er.counter.toLocaleString("en-GB")}/wk.`, state };
+  }
+
   if (state.balance < fee) {
     return { ok: false, message: `Insufficient funds (need ${fee.toLocaleString("en-GB")})`, state };
   }
 
-  const seller = isFree ? null : playerClub(state, playerId);
   const squads = { ...state.squads };
-  if (seller != null) {
-    squads[seller] = squads[seller].filter((id) => id !== playerId);
-  }
+  if (seller != null) squads[seller] = squads[seller].filter((id) => id !== playerId);
   squads[state.userClubId] = [...(squads[state.userClubId] ?? []), playerId];
 
   const transfer = {
@@ -805,12 +862,13 @@ export function buyPlayer(state: CareerState, playerId: number): TransferOutcome
 
   return {
     ok: true,
-    message: `Signed ${player.name} for ${fee.toLocaleString("en-GB")}`,
+    message: `Signed ${player.name} for ${fee.toLocaleString("en-GB")} (${wage.toLocaleString("en-GB")}/wk).`,
     state: {
       ...state,
       squads,
       freeAgents: state.freeAgents.filter((id) => id !== playerId),
       balance: state.balance - fee,
+      contracts: { ...state.contracts, [playerId]: { expirySeason: state.seasonStartYear + lengthYears, wage } },
       transfers: [...state.transfers, transfer],
       inbox: [
         makeNews(
@@ -818,7 +876,7 @@ export function buyPlayer(state: CareerState, playerId: number): TransferOutcome
           "transfer",
           `Signed ${player.name}`,
           `You signed ${player.name} for ${fee.toLocaleString("en-GB")}.`,
-          `${db.teamById.get(state.userClubId)!.name} have completed the signing of ${player.name} (${player.position}, age ${player.age}) for ${fee.toLocaleString("en-GB")}.`,
+          `${db.teamById.get(state.userClubId)!.name} have completed the signing of ${player.name} (${player.position}, age ${player.age}) for ${fee.toLocaleString("en-GB")} on ${wage.toLocaleString("en-GB")}/wk.`,
           playerId,
         ),
         ...state.inbox,
@@ -827,25 +885,89 @@ export function buyPlayer(state: CareerState, playerId: number): TransferOutcome
   };
 }
 
-export function sellPlayer(state: CareerState, playerId: number): TransferOutcome {
+export interface TransferOffer {
+  clubId: number;
+  clubName: string;
+  fee: number;
+  reputation: number;
+}
+
+export function transferOffers(state: CareerState, playerId: number): TransferOffer[] {
+  const player = getPlayerCurrent(state, playerId);
+  const ps = getPlayerState(state, playerId);
+  const contract = getContract(state, playerId);
+  const mySquad = state.squads[state.userClubId] ?? [];
+  const myStr = teamStrength(mySquad, (id) => getPlayerCurrent(state, id).ca);
+  const league = db.leagueByTeam.get(state.userClubId);
+  if (!league) return [];
+
+  const offers: TransferOffer[] = [];
+  for (const teamId of league.teams) {
+    if (teamId === state.userClubId) continue;
+    const squad = state.squads[teamId] ?? [];
+    if (squad.length < 11) continue;
+
+    const counts = { GK: 0, DF: 0, MF: 0, FW: 0 } as Record<Category, number>;
+    for (const id of squad) counts[getPlayer(id).category]++;
+    if (counts[player.category] >= SQUAD_TARGETS[player.category]) continue;
+
+    const budget = aiBudgetFor(teamId);
+    if (budget < player.value * 0.5) continue;
+
+    const str = teamStrength(squad, (id) => getPlayer(id).ca);
+    const wj = willJoin({
+      player,
+      morale: ps.morale,
+      wantsTransfer: ps.wantsTransfer,
+      currentWage: contract.wage,
+      currentClubStrength: myStr,
+      targetClubStrength: str,
+      targetReputation: reputationFromStrength(str),
+      offeredWage: player.wage,
+    });
+    if (!wj.willing) continue;
+
+    const fee = Math.min(budget, Math.round((player.value * 0.85) / 100_000) * 100_000);
+    offers.push({ clubId: teamId, clubName: db.teamById.get(teamId)!.name, fee, reputation: reputationFromStrength(str) });
+  }
+  return offers.sort((a, b) => b.fee - a.fee).slice(0, 5);
+}
+
+export function sellToClub(state: CareerState, playerId: number, buyerClubId: number, fee: number): TransferOutcome {
   if (!state.squads[state.userClubId]?.includes(playerId)) {
     return { ok: false, message: "Not in your squad", state };
   }
-  const player = getPlayer(playerId);
-  const fee = Math.round(player.value * 0.85);
+  const player = getPlayerCurrent(state, playerId);
+  const ps = getPlayerState(state, playerId);
+  const contract = getContract(state, playerId);
+  const myStr = teamStrength(state.squads[state.userClubId] ?? [], (id) => getPlayerCurrent(state, id).ca);
+  const buyerSquad = state.squads[buyerClubId] ?? db.squadOf.get(buyerClubId) ?? [];
+  const buyerStr = teamStrength(buyerSquad, (id) => getPlayer(id).ca);
 
-  const candidates = db.teams.filter((t) => t.id !== state.userClubId);
-  const buyer = candidates[Math.floor(Math.random() * candidates.length)];
+  const wj = willJoin({
+    player,
+    morale: ps.morale,
+    wantsTransfer: ps.wantsTransfer,
+    currentWage: contract.wage,
+    currentClubStrength: myStr,
+    targetClubStrength: buyerStr,
+    targetReputation: reputationFromStrength(buyerStr),
+    offeredWage: player.wage,
+  });
+  if (!wj.willing) return { ok: false, message: wj.reason, state };
+
+  const buyer = db.teamById.get(buyerClubId);
+  if (!buyer) return { ok: false, message: "Unknown club", state };
 
   const squads = { ...state.squads };
   squads[state.userClubId] = squads[state.userClubId].filter((id) => id !== playerId);
-  squads[buyer.id] = [...(squads[buyer.id] ?? []), playerId];
+  squads[buyerClubId] = [...(squads[buyerClubId] ?? []), playerId];
 
   const transfer = {
     playerId,
     playerName: player.name,
     fromTeamId: state.userClubId,
-    toTeamId: buyer.id,
+    toTeamId: buyerClubId,
     fee,
     date: state.date,
     kind: "out" as const,
@@ -867,7 +989,7 @@ export function sellPlayer(state: CareerState, playerId: number): TransferOutcom
           `${player.name} joined ${buyer.name} for ${fee.toLocaleString("en-GB")}.`,
           `${db.teamById.get(state.userClubId)!.name} have sold ${player.name} (${player.position}, age ${player.age}) to ${buyer.name} for ${fee.toLocaleString("en-GB")}.`,
           playerId,
-          buyer.id,
+          buyerClubId,
         ),
         ...state.inbox,
       ],

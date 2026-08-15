@@ -1,4 +1,5 @@
 import { db, getPlayer } from "./data";
+import { askingPrice, reputationFromStrength, willJoin } from "./negotiation";
 import { hashString, mulberry32, type Rng } from "./rng";
 import { teamStrength } from "./strength";
 import type { Category, Contract } from "./types";
@@ -50,23 +51,44 @@ function findTarget(
   category: Category,
   budget: number,
   rng: Rng,
+  seasonStartYear: number,
 ): { id: number; fee: number; from: number | null } | null {
   const owned = new Set(squad);
   const free = new Set(freeAgents);
+  const buyingStr = teamStrength(squad, (id) => getPlayer(id).ca);
   const candidates: { id: number; fee: number; from: number | null }[] = [];
 
   for (const [id, p] of db.players) {
     if (owned.has(id) || p.category !== category) continue;
 
     let from: number | null = null;
-    let fee = p.value;
+    let fee: number;
+    let currentStr = 0;
     if (free.has(id)) {
       fee = 0;
     } else {
       from = leagueClubOf(squads, id);
       if (from == null) continue; // foreign club player — out of scope
+      const sellerSquad = squads[from] ?? db.squadOf.get(from) ?? [];
+      const sellerStr = teamStrength(sellerSquad, (id) => getPlayer(id).ca);
+      currentStr = sellerStr;
+      fee = askingPrice(p, { expirySeason: seasonStartYear + 3, wage: p.wage }, sellerStr, seasonStartYear);
     }
-    if (fee <= budget) candidates.push({ id, fee, from });
+    if (fee > budget) continue;
+
+    const willing = willJoin({
+      player: p,
+      morale: 12,
+      wantsTransfer: false,
+      currentWage: p.wage,
+      currentClubStrength: currentStr,
+      targetClubStrength: buyingStr,
+      targetReputation: reputationFromStrength(buyingStr),
+      offeredWage: p.wage,
+    });
+    if (!willing.willing) continue;
+
+    candidates.push({ id, fee, from });
   }
 
   if (!candidates.length) return null;
@@ -104,7 +126,7 @@ export function runAiTransfers(
       .sort((a, b) => b.d - a.d)[0];
 
     if (need.d > 0) {
-      const target = findTarget(nextSquads, nextFree, squad, need.c, budget, rng);
+      const target = findTarget(nextSquads, nextFree, squad, need.c, budget, rng, seasonStartYear);
       if (target) {
         if (target.from != null && nextSquads[target.from]) {
           nextSquads[target.from] = nextSquads[target.from].filter((x) => x !== target.id);
@@ -170,7 +192,8 @@ export function runAiContracts(
         released.push({ playerId: id, teamId });
       } else {
         kept.push(id);
-        nextContracts[id] = { expirySeason: year + 3, wage: p.wage };
+        const raise = p.age <= 23 && p.pa - p.ca >= 25 ? 1.15 : p.age >= 30 ? 1.0 : 1.1;
+        nextContracts[id] = { expirySeason: year + 3, wage: Math.round((p.wage * raise) / 100) * 100 };
       }
     }
     nextSquads[teamId] = kept;

@@ -1,10 +1,11 @@
 import { useMemo, useState } from "react";
-import { getContract, getPlayerCurrent, getPlayerState, happinessReasons, interactWithPlayer, releasePlayer, renewContract, sellPlayer, setTraining } from "../game/career";
+import { getContract, getPlayerCurrent, getPlayerState, happinessReasons, interactWithPlayer, releasePlayer, setTraining } from "../game/career";
 import { nationFlag } from "../game/nations";
-import { formatMoney } from "../game/format";
 import type { CareerState } from "../game/types";
 import { sortBy, useSort } from "../hooks/useSort";
+import { ContractModal } from "./ContractModal";
 import { PlayerPanel } from "./PlayerPanel";
+import { SellModal } from "./SellModal";
 import { AbilityStars, RatingDots, SortHeader } from "./ui";
 
 const CAT_ORDER: Record<string, number> = { GK: 0, DF: 1, MF: 2, FW: 3 };
@@ -17,6 +18,8 @@ interface Props {
 export function SquadView({ career, apply }: Props) {
   const [selected, setSelected] = useState<number | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [contracting, setContracting] = useState<number | null>(null);
+  const [selling, setSelling] = useState<number | null>(null);
   const { sort, toggle } = useSort("ca");
 
   const squad = useMemo(() => {
@@ -40,9 +43,7 @@ export function SquadView({ career, apply }: Props) {
   const selectedState = selected != null ? getPlayerState(career, selected) : null;
 
   const doSell = (id: number) => {
-    const out = sellPlayer(career, id);
-    if (out.ok) { apply(out.state); setSelected(null); setFeedback(out.message); }
-    else setFeedback(out.message);
+    setSelling(id);
   };
   const doRelease = (id: number) => {
     const out = releasePlayer(career, id);
@@ -107,11 +108,7 @@ export function SquadView({ career, apply }: Props) {
               onSetTraining={(focus) => apply(setTraining(career, selected, focus))}
               contract={getContract(career, selected)}
               seasonYear={career.seasonStartYear}
-              onRenew={() => {
-                const out = renewContract(career, selected);
-                apply(out.state);
-                setFeedback(out.message);
-              }}
+              onRenew={() => setContracting(selected)}
               happiness={happinessReasons(career, selected)}
               onInteract={(kind) => {
                 const out = interactWithPlayer(career, selected, kind);
@@ -120,13 +117,32 @@ export function SquadView({ career, apply }: Props) {
               }}
             />
             <div className="btn-row" style={{ marginTop: 16 }}>
-              <button className="btn" onClick={() => doSell(selected)}>Sell ({formatMoney(Math.round(selectedPlayer.value * 0.85))})</button>
+              <button className="btn" onClick={() => doSell(selected)}>Sell</button>
               <button className="btn danger" onClick={() => doRelease(selected)}>Release</button>
               <div className="spacer" style={{ flex: 1 }} />
               <button className="btn small" onClick={() => setSelected(null)}>Close</button>
             </div>
           </div>
         </div>
+      )}
+
+      {contracting != null && (
+        <ContractModal
+          career={career}
+          playerId={contracting}
+          playerName={getPlayerCurrent(career, contracting).name}
+          onClose={() => setContracting(null)}
+          apply={apply}
+        />
+      )}
+      {selling != null && (
+        <SellModal
+          career={career}
+          playerId={selling}
+          playerName={getPlayerCurrent(career, selling).name}
+          onClose={() => setSelling(null)}
+          apply={apply}
+        />
       )}
     </div>
   );

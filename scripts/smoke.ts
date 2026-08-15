@@ -1,12 +1,15 @@
 import { db } from "../src/game/data";
 import {
   advanceWeek,
-  buyPlayer,
+  askingPriceFor,
+  contractDemand,
   leagueStandings,
+  makeTransferBid,
   newCareer,
   playerClub,
-  sellPlayer,
+  sellToClub,
   startNextSeason,
+  transferOffers,
   userPosition,
 } from "../src/game/career";
 
@@ -37,13 +40,20 @@ const target = [...db.players.entries()]
   .sort((a, b) => b.ca - a.ca)[0];
 console.log("\nBuy test: player", db.players.get(target.id)!.name, "CA", target.ca);
 const before = state.balance;
-const bought = buyPlayer(state, target.id);
+const ask = askingPriceFor(state, target.id);
+const demand = contractDemand(state, target.id, 3);
+const bought = makeTransferBid(state, target.id, ask, demand, 3);
 console.log("  ok:", bought.ok, "| msg:", bought.message);
 if (bought.ok) {
   console.log("  balance before/after:", before, "->", bought.state.balance);
   console.log("  now at City:", playerClub(bought.state, target.id) === city.id);
-  const sold = sellPlayer(bought.state, target.id);
-  console.log("Sell back:", sold.ok, sold.message);
+  const offers = transferOffers(bought.state, target.id);
+  if (offers.length) {
+    const sold = sellToClub(bought.state, target.id, offers[0].clubId, offers[0].fee);
+    console.log("Sell to", db.teamById.get(offers[0].clubId)!.name + ":", sold.ok, sold.message);
+  } else {
+    console.log("Sell back: no interested clubs");
+  }
 }
 
 // Next season rollover
