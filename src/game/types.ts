@@ -357,6 +357,7 @@ export interface CareerState {
   manager: ManagerProfile;
   sacked: boolean;
   jobOffers: number[];
+  freeAgents: number[];
   tactics: TeamTactics;
   matchLogs: Record<string, MatchLog>;
 }
