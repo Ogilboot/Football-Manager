@@ -10,11 +10,11 @@ import { computeStandings } from "./standings";
 import { teamStrength } from "./strength";
 import { aiPickTactics, buildMatchSquad } from "./teamSelection";
 import type { MatchContext, MatchEvent, MatchLog } from "./matchTypes";
-import type { BoardObjective, CareerState, Category, CompetitionInfo, Contract, Fixture, MatchResult, MatchdayReport, NewsItem, Player, PlayerAttrs, PlayerOverrides, SeasonStats, TeamTactics } from "./types";
+import type { BoardObjective, CareerState, Category, CompetitionInfo, Contract, Fixture, ManagerProfile, MatchResult, MatchdayReport, NewsItem, Player, PlayerAttrs, PlayerOverrides, SeasonStats, TeamTactics } from "./types";
 
 export { defaultPlayerState, getPlayerState } from "./playerState";
 
-export const GAME_VERSION = 16;
+export const GAME_VERSION = 17;
 const START_DATE = "2025-08-16";
 const SAVE_KEY = "fm25_career";
 
@@ -160,6 +160,47 @@ function weeklyMoraleUpdate(state: CareerState, playedBefore: Map<number, number
   return { ...state, playerStates, inbox };
 }
 
+// ---- manager career -------------------------------------------------------
+
+function seasonRecord(state: CareerState): { wins: number; draws: number; losses: number } {
+  let wins = 0;
+  let draws = 0;
+  let losses = 0;
+  for (const f of fixturesFor(state, state.userClubId)) {
+    const res = state.results[f.id];
+    if (!res) continue;
+    const letter = fixtureResultLetter(res, state.userClubId);
+    if (letter === "W") wins++;
+    else if (letter === "D") draws++;
+    else losses++;
+  }
+  return { wins, draws, losses };
+}
+
+function generateJobOffers(state: CareerState, reputation: number, sacked: boolean): number[] {
+  const current = state.userClubId;
+  const currentStrength = teamStrength(state.squads[current] ?? [], (id) => getPlayerCurrent(state, id).ca);
+  const target = currentStrength + (reputation - 50) * 0.8;
+  const candidates = db.teams
+    .filter((t) => t.id !== current)
+    .map((t) => ({ id: t.id, s: teamStrength(db.squadOf.get(t.id) ?? [], (id) => getPlayer(id).ca) }))
+    .sort((a, b) => Math.abs(a.s - target) - Math.abs(b.s - target));
+  const count = sacked ? 3 : 2;
+  return candidates.slice(0, count).map((c) => c.id);
+}
+
+export function moveClub(state: CareerState, clubId: number): CareerState {
+  const fresh = newCareer(clubId, state.saveName);
+  return {
+    ...fresh,
+    reputation: state.reputation,
+    manager: { ...state.manager, clubs: [...state.manager.clubs, clubId] },
+    sacked: false,
+    jobOffers: [],
+    inbox: [makeNews(fresh.date, "info", `Welcome to ${db.teamById.get(clubId)!.name}`, "You have been appointed manager of the club."), ...fresh.inbox],
+  };
+}
+
 // ---- competitions ----------------------------------------------------------
 
 const COMPETITION_NAMES: Record<string, string> = {
@@ -210,6 +251,7 @@ function advanceCompetitions(state: CareerState): CareerState {
   const competitions = { ...state.competitions };
   let inbox = state.inbox;
   let reputation = state.reputation;
+  let trophies = state.manager.trophies;
 
   for (const compId of ["cup", "ucl", "uel"] as const) {
     const comp = competitions[compId];
@@ -232,6 +274,7 @@ function advanceCompetitions(state: CareerState): CareerState {
     if (nextTeams.length === 1 && nextTeams[0] === state.userClubId) {
       inbox = [makeNews(state.date, "award", `You won the ${comp.name}!`, `Your side lifted the ${comp.name} trophy.`), ...inbox];
       reputation = clamp(reputation + 15, 0, 100);
+      trophies += 1;
     }
 
     if (nextRound > schedule.length || nextTeams.length < 2) {
@@ -242,7 +285,7 @@ function advanceCompetitions(state: CareerState): CareerState {
     competitions[compId] = { ...comp, round: nextRound, teams: nextTeams };
   }
 
-  return { ...state, fixtures, competitions, inbox, reputation };
+  return { ...state, fixtures, competitions, inbox, reputation, manager: { ...state.manager, trophies } };
 }
 
 // ---- finances -------------------------------------------------------------
@@ -320,6 +363,9 @@ export function newCareer(clubId: number, saveName: string): CareerState {
     reputation: 50,
     boardObjective: boardObjectiveFor(teamStrength(db.squadOf.get(clubId) ?? [], (id) => getPlayer(id).ca), teamIds.length),
     contracts: {},
+    manager: { trophies: 0, wins: 0, draws: 0, losses: 0, seasons: 0, clubs: [clubId] },
+    sacked: false,
+    jobOffers: [],
     tactics,
     matchLogs: {},
   };
@@ -782,6 +828,20 @@ export function finishSeason(state: CareerState): CareerState {
     ),
   );
 
+  const record = seasonRecord(state);
+  const manager: ManagerProfile = {
+    ...state.manager,
+    wins: state.manager.wins + record.wins,
+    draws: state.manager.draws + record.draws,
+    losses: state.manager.losses + record.losses,
+    seasons: state.manager.seasons + 1,
+  };
+  const sacked = reputation <= 15;
+  const jobOffers = generateJobOffers(state, reputation, sacked);
+  if (sacked) {
+    awardNews.push(makeNews(state.date, "info", `Sacked by ${club.name}`, "The board have relieved you of your duties."));
+  }
+
   return {
     ...state,
     balance: state.balance + prize,
@@ -789,6 +849,9 @@ export function finishSeason(state: CareerState): CareerState {
     playerOverrides: overrides,
     reputation,
     boardObjective,
+    manager,
+    sacked,
+    jobOffers,
     inbox: [...awardNews, ...state.inbox],
   };
 }

@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { db } from "../game/data";
-import { advance, clearLatestIntake, finishSeason, markAllNewsRead, startNextSeason, userPosition } from "../game/career";
+import { advance, clearLatestIntake, clearSave, finishSeason, markAllNewsRead, startNextSeason, userPosition } from "../game/career";
 import { formatDate, formatMoney } from "../game/format";
 import type { CareerState, MatchdayReport } from "../game/types";
 import type { MatchLog } from "../game/matchTypes";
 import { Dashboard } from "./Dashboard";
 import { FixturesView } from "./FixturesView";
+import { ManagerCareerModal } from "./ManagerCareerModal";
+import { ManagerView } from "./ManagerView";
 import { MatchdayModal } from "./MatchdayModal";
 import { MatchView } from "./MatchView";
 import { NewsView } from "./NewsView";
@@ -18,7 +20,7 @@ import { TacticsView } from "./TacticsView";
 import { YouthIntakeModal } from "./YouthIntakeModal";
 import { teamColor } from "../game/teamColors";
 
-type Tab = "dashboard" | "squad" | "tactics" | "fixtures" | "table" | "stats" | "scouting" | "news";
+type Tab = "dashboard" | "squad" | "tactics" | "fixtures" | "table" | "stats" | "scouting" | "news" | "manager";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "dashboard", label: "Home" },
@@ -29,6 +31,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "stats", label: "Stats" },
   { id: "scouting", label: "Scouting" },
   { id: "news", label: "News" },
+  { id: "manager", label: "Manager" },
 ];
 
 interface Props {
@@ -108,8 +111,9 @@ export function GameScreen({ career, apply, onExit }: Props) {
           {tab === "fixtures" && <FixturesView career={career} />}
           {tab === "table" && <TableView career={career} />}
           {tab === "stats" && <StatsView career={career} />}
-          {tab === "scouting" && <TransfersView career={career} apply={apply} />}
-          {tab === "news" && <NewsView career={career} onRead={() => apply(markAllNewsRead(career))} />}
+        {tab === "scouting" && <TransfersView career={career} apply={apply} />}
+        {tab === "news" && <NewsView career={career} onRead={() => apply(markAllNewsRead(career))} />}
+        {tab === "manager" && <ManagerView career={career} />}
         </div>
       </div>
 
@@ -133,6 +137,17 @@ export function GameScreen({ career, apply, onExit }: Props) {
       )}
       {career.latestIntake.length > 0 && !watchLog && (
         <YouthIntakeModal career={career} onClose={() => apply(clearLatestIntake(career))} />
+      )}
+      {(career.sacked || career.jobOffers.length > 0) && (
+        <ManagerCareerModal
+          career={career}
+          apply={apply}
+          onRetire={() => {
+            clearSave();
+            onExit();
+          }}
+          onStay={() => apply({ ...career, jobOffers: [] })}
+        />
       )}
     </div>
   );

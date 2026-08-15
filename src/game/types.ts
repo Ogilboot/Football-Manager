@@ -264,6 +264,15 @@ export interface Contract {
   wage: number;
 }
 
+export interface ManagerProfile {
+  trophies: number;
+  wins: number;
+  draws: number;
+  losses: number;
+  seasons: number;
+  clubs: number[];
+}
+
 // ---- Runtime state -------------------------------------------------------
 
 export interface Fixture {
@@ -345,6 +354,9 @@ export interface CareerState {
   reputation: number;
   boardObjective: BoardObjective;
   contracts: Record<number, Contract>;
+  manager: ManagerProfile;
+  sacked: boolean;
+  jobOffers: number[];
   tactics: TeamTactics;
   matchLogs: Record<string, MatchLog>;
 }
