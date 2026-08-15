@@ -15,6 +15,7 @@ export interface Database {
   teamById: Map<number, Team>;
   teamsByLeague: Map<string, Team[]>;
   leagueByTeam: Map<number, League>;
+  clubOfPlayer: Map<number, number>;
 }
 
 function convertAttrs(fc: FcAttrs, id: number, name: string, skillMoves: number): PlayerAttrs {
@@ -105,6 +106,11 @@ function build(): Database {
     for (const id of l.teams) leagueByTeam.set(id, l);
   }
 
+  const clubOfPlayer = new Map<number, number>();
+  for (const [teamId, squad] of squadOf) {
+    for (const pid of squad) clubOfPlayer.set(pid, Number(teamId));
+  }
+
   return {
     meta: data.meta,
     leagues: data.leagues,
@@ -114,6 +120,7 @@ function build(): Database {
     teamById,
     teamsByLeague,
     leagueByTeam,
+    clubOfPlayer,
   };
 }
 

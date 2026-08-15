@@ -15,7 +15,7 @@ import type { BoardObjective, CareerState, Category, CompetitionInfo, Contract, 
 
 export { defaultPlayerState, getPlayerState } from "./playerState";
 
-export const GAME_VERSION = 18;
+export const GAME_VERSION = 19;
 const START_DATE = "2025-08-16";
 const SAVE_KEY = "fm25_career";
 
@@ -389,6 +389,8 @@ export function newCareer(clubId: number, saveName: string): CareerState {
     freeAgents: [],
     tactics,
     matchLogs: {},
+    scoutKnowledge: {},
+    shortlist: [],
   };
 }
 
@@ -678,6 +680,7 @@ export function advance(state: CareerState): { state: CareerState; report: Match
     const { state: played, report } = playMatchday(state);
     let next = weeklyMoraleUpdate(played, playedBefore);
     next = applyWeeklyFinance(next);
+    next = applyScoutingProgress(next);
     if (next.nextStage === WINTER_WINDOW_STAGE) {
       next = applyAiTransfers(next, state.seasonStartYear);
     }
@@ -688,6 +691,65 @@ export function advance(state: CareerState): { state: CareerState; report: Match
     state: { ...state, date, dayOfWeek, inbox: item ? [item, ...state.inbox] : state.inbox },
     report: null,
   };
+}
+
+// ---- scouting & player knowledge -------------------------------------------
+
+const POSITION_GROUPS_BY_CATEGORY: Record<Category, string[]> = {
+  GK: ["GK"],
+  DF: ["CB", "LB", "RB", "LWB", "RWB"],
+  MF: ["CDM", "CM", "CAM", "LM", "RM"],
+  FW: ["ST", "CF", "LW", "RW"],
+};
+
+export const ALL_POSITIONS = ["GK", "CB", "LB", "RB", "LWB", "RWB", "CDM", "CM", "CAM", "LM", "RM", "LW", "RW", "ST", "CF"];
+
+export function comfortablePositions(player: Player): string[] {
+  const list = new Set<string>([player.position, ...player.altPositions]);
+  for (const pos of POSITION_GROUPS_BY_CATEGORY[player.category] ?? []) list.add(pos);
+  return [...list];
+}
+
+export function playerClubStatic(id: number): number | null {
+  return db.clubOfPlayer.get(id) ?? null;
+}
+
+function defaultKnowledge(state: CareerState, id: number): number {
+  const clubId = playerClub(state, id) ?? playerClubStatic(id);
+  if (clubId == null) return 20;
+  if (clubId === state.userClubId) return 100;
+  const userLeague = db.leagueByTeam.get(state.userClubId)?.name;
+  const clubLeague = db.leagueByTeam.get(clubId)?.name;
+  return clubLeague === userLeague ? 40 : 10;
+}
+
+export function scoutKnowledgeOf(state: CareerState, id: number): number {
+  const mySquad = state.squads[state.userClubId] ?? [];
+  if (mySquad.includes(id)) return 100;
+  return state.scoutKnowledge[id] ?? defaultKnowledge(state, id);
+}
+
+export function isShortlisted(state: CareerState, id: number): boolean {
+  return state.shortlist.includes(id);
+}
+
+export function addToShortlist(state: CareerState, id: number): CareerState {
+  if (state.shortlist.includes(id)) return state;
+  return { ...state, shortlist: [...state.shortlist, id] };
+}
+
+export function removeFromShortlist(state: CareerState, id: number): CareerState {
+  return { ...state, shortlist: state.shortlist.filter((x) => x !== id) };
+}
+
+export function applyScoutingProgress(state: CareerState): CareerState {
+  if (!state.shortlist.length) return state;
+  const scoutKnowledge = { ...state.scoutKnowledge };
+  for (const id of state.shortlist) {
+    const cur = scoutKnowledgeOf(state, id);
+    scoutKnowledge[id] = Math.min(100, cur + 25);
+  }
+  return { ...state, scoutKnowledge };
 }
 
 // ---- transfers ------------------------------------------------------------

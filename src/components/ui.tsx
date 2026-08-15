@@ -1,5 +1,6 @@
 import type { Category } from "../game/types";
 import type { SortState } from "../hooks/useSort";
+import { revealCa, type KnowledgeLevel } from "../game/scouting";
 
 export function SortHeader({ label, sortKey, sort, onSort, num }: {
   label: string;
@@ -61,7 +62,7 @@ function starValue(ability: number): number {
   return Math.max(0.5, Math.min(5, Math.round(ability / 20) / 2));
 }
 
-export function AbilityStars({ ca, pa }: { ca: number; pa: number }) {
+export function AbilityStars({ ca, pa, title }: { ca: number; pa: number; title?: string }) {
   const gold = starValue(ca);
   const pot = starValue(pa);
   const slots = [];
@@ -76,5 +77,17 @@ export function AbilityStars({ ca, pa }: { ca: number; pa: number }) {
     else if (potHere > 0) { cls = "pothalf"; ch = "★"; }
     slots.push(<span key={i} className={`star ${cls}`}>{ch}</span>);
   }
-  return <span className="ability-stars" title={`Current ability ${ca} · Potential ${pa}`}>{slots}</span>;
+  return <span className="ability-stars" title={title ?? `Current ability ${ca} · Potential ${pa}`}>{slots}</span>;
+}
+
+export function ScoutedStars({ ca, pa, level }: { ca: number; pa: number; level: KnowledgeLevel }) {
+  if (level === "unknown") return <span className="scout-unknown" title="Not scouted — assign a scout to learn more">?</span>;
+  if (level === "partial") {
+    return (
+      <span title="Approximate ability — scout for a precise report">
+        <AbilityStars ca={revealCa(ca, "partial")!} pa={revealCa(pa, "partial")!} title="Approximate ability" />
+      </span>
+    );
+  }
+  return <AbilityStars ca={ca} pa={pa} />;
 }

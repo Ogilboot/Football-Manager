@@ -1,8 +1,9 @@
 import { CAT_ATTRS, moraleLabel } from "../game/career";
 import { nationFlag } from "../game/nations";
 import { formatMoney, formatWage } from "../game/format";
+import { knowledgeLevel } from "../game/scouting";
 import type { Category, Contract, Personality, Player, PlayerAttrs, PlayerState } from "../game/types";
-import { AbilityStars, CategoryBadge, RatingDots } from "./ui";
+import { CategoryBadge, RatingDots, ScoutedStars } from "./ui";
 
 const TRAINABLE: [keyof PlayerAttrs, string][] = [
   ["finishing", "Finishing"],
@@ -117,7 +118,7 @@ function personalitySummary(p: Personality): string {
   return traits.slice(0, 3).join(", ").replace(/^./, (c) => c.toUpperCase()) + ".";
 }
 
-export function PlayerPanel({ player, state, onSetTraining, contract, seasonYear, onRenew, happiness, onInteract }: {
+export function PlayerPanel({ player, state, onSetTraining, contract, seasonYear, onRenew, happiness, onInteract, knowledge }: {
   player: Player;
   state?: PlayerState;
   onSetTraining?: (focus: keyof PlayerAttrs | null) => void;
@@ -126,7 +127,13 @@ export function PlayerPanel({ player, state, onSetTraining, contract, seasonYear
   onRenew?: () => void;
   happiness?: string[];
   onInteract?: (kind: "praise" | "encourage" | "criticize") => void;
+  knowledge?: number;
 }) {
+  const level = knowledgeLevel(knowledge ?? 100);
+  const approx = (v: number) => Math.round(v / 5) * 5;
+  const cellVal = (v: number) => (level === "unknown" ? "?" : level === "partial" ? `~${approx(v)}` : String(v));
+  const cellClass = (v: number) => (level === "unknown" ? "attr-avg" : attrClass(level === "partial" ? approx(v) : v));
+
   const isGK = player.category === "GK";
   const groups = isGK ? GROUPS : GROUPS.filter((g) => g.title !== "Goalkeeping");
   const keyAttrs = CAT_ATTRS[player.category] ?? [];
@@ -156,7 +163,7 @@ export function PlayerPanel({ player, state, onSetTraining, contract, seasonYear
         <div className="cell"><div className="k">Weak foot</div><div className="v">{player.weakFoot}★</div></div>
         <div className="cell"><div className="k">Value</div><div className="v">{formatMoney(player.value)}</div></div>
         <div className="cell"><div className="k">Wage</div><div className="v" style={{ fontSize: 13 }}>{formatWage(player.wage)}</div></div>
-        <div className="cell"><div className="k">Ability</div><div className="v" style={{ fontSize: 13 }}><AbilityStars ca={player.ca} pa={player.pa} /></div></div>
+        <div className="cell"><div className="k">Ability</div><div className="v" style={{ fontSize: 13 }}><ScoutedStars ca={player.ca} pa={player.pa} level={level} /></div></div>
         <div className="cell"><div className="k">Skill moves</div><div className="v">{player.skillMoves}★</div></div>
       </div>
 
@@ -174,7 +181,7 @@ export function PlayerPanel({ player, state, onSetTraining, contract, seasonYear
             {g.keys.map((k) => (
               <div key={k} className={`attr-cell ${keyAttrs.includes(k) ? "key" : ""}`}>
                 <span className="name">{fmtAttr(k)}</span>
-                <span className={`val ${attrClass(player.attrs[k])}`}>{player.attrs[k]}</span>
+                <span className={`val ${cellClass(player.attrs[k])}`}>{cellVal(player.attrs[k])}</span>
               </div>
             ))}
           </div>
@@ -241,7 +248,7 @@ export function PlayerPanel({ player, state, onSetTraining, contract, seasonYear
           {PERSONALITY_LABELS.map(([k, label]) => (
             <div key={k} className="attr-cell">
               <span className="name">{label}</span>
-              <span className="val attr-avg">{player.personality[k]}</span>
+              <span className={`val ${cellClass(player.personality[k])}`}>{cellVal(player.personality[k])}</span>
             </div>
           ))}
         </div>

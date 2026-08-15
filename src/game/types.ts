@@ -363,6 +363,8 @@ export interface CareerState {
   freeAgents: number[];
   tactics: TeamTactics;
   matchLogs: Record<string, MatchLog>;
+  scoutKnowledge: Record<number, number>;
+  shortlist: number[];
 }
 
 export interface MatchdayReport {

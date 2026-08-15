@@ -362,6 +362,13 @@ th.sortable:hover { color: #fff; }
   color: transparent;
 }
 
+.scout-unknown {
+  color: var(--text-dim);
+  font-weight: 700;
+  font-size: 15px;
+  padding: 0 2px;
+}
+
 .page-head { margin-bottom: 16px; }
 .page-head h2 { margin: 0 0 2px; font-size: 18px; color: #fff; }
 .page-head .sub { color: var(--text-dim); font-size: 12px; }
