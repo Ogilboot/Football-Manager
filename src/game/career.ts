@@ -712,6 +712,36 @@ export function advance(state: CareerState): { state: CareerState; report: Match
   };
 }
 
+export interface ContinueResult {
+  state: CareerState;
+  report: MatchdayReport | null;
+  news: NewsItem[];
+  startDate: string;
+  endDate: string;
+  days: number;
+}
+
+// Advance through the days leading up to the next match (collecting the
+// flavour/preview news generated along the way), then play that match. The
+// returned `news` is only the lead-up news; the result is revealed via the
+// match view, not listed here.
+export function advanceUntilMatch(state: CareerState): ContinueResult {
+  const startDate = state.date;
+  const startCount = state.inbox.length;
+  let cur = state;
+  let days = 0;
+
+  while (!cur.seasonOver && (cur.dayOfWeek + 1) % 7 !== MATCHDAY && days < 6) {
+    const { state: next } = advance(cur);
+    cur = next;
+    days++;
+  }
+
+  const leadUpNews = cur.inbox.slice(0, cur.inbox.length - startCount).reverse();
+  const { state: final, report } = advance(cur);
+  return { state: final, report, news: leadUpNews, startDate, endDate: cur.date, days };
+}
+
 // ---- scouting & player knowledge -------------------------------------------
 
 const POSITION_GROUPS_BY_CATEGORY: Record<Category, string[]> = {

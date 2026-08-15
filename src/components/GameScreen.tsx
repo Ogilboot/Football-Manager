@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { db } from "../game/data";
-import { advance, clearLatestIntake, clearSave, finishSeason, markAllNewsRead, startNextSeason, userPosition } from "../game/career";
+import { advanceUntilMatch, clearLatestIntake, clearSave, finishSeason, markAllNewsRead, startNextSeason, userPosition, type ContinueResult } from "../game/career";
 import { formatDate, formatMoney } from "../game/format";
 import type { CareerState, MatchdayReport } from "../game/types";
 import type { MatchLog } from "../game/matchTypes";
+import { ContinuingScreen } from "./ContinuingScreen";
 import { Dashboard } from "./Dashboard";
 import { FixturesView } from "./FixturesView";
 import { ManagerCareerModal } from "./ManagerCareerModal";
@@ -44,6 +45,7 @@ export function GameScreen({ career, apply, onExit }: Props) {
   const [tab, setTab] = useState<Tab>("dashboard");
   const [report, setReport] = useState<MatchdayReport | null>(null);
   const [watchLog, setWatchLog] = useState<MatchLog | null>(null);
+  const [continuing, setContinuing] = useState<ContinueResult | null>(null);
 
   const club = db.teamById.get(career.userClubId)!;
   const position = userPosition(career);
@@ -57,12 +59,23 @@ export function GameScreen({ career, apply, onExit }: Props) {
 
   const playNext = () => {
     if (career.seasonOver) return;
-    const { state, report: r } = advance(career);
-    apply(state);
-    if (r) {
-      setReport(r);
-      setWatchLog(r.userLog);
+    const result = advanceUntilMatch(career);
+    if (result.days === 0) complete(result);
+    else setContinuing(result);
+  };
+
+  const complete = (c: ContinueResult) => {
+    apply(c.state);
+    if (c.report) {
+      setReport(c.report);
+      setWatchLog(c.report.userLog);
     }
+  };
+
+  const finishContinue = () => {
+    const c = continuing;
+    setContinuing(null);
+    if (c) complete(c);
   };
 
   return (
@@ -116,6 +129,8 @@ export function GameScreen({ career, apply, onExit }: Props) {
         {tab === "manager" && <ManagerView career={career} />}
         </div>
       </div>
+
+      {continuing && <ContinuingScreen result={continuing} onDone={finishContinue} />}
 
       {watchLog && (
         <MatchView log={watchLog} userClubId={career.userClubId} onClose={() => setWatchLog(null)} />

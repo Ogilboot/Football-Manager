@@ -551,3 +551,18 @@ input[type="text"]::placeholder { color: var(--text-dim); }
 }
 .banner .msg { flex: 1; }
 .banner .msg b { color: var(--accent); }
+
+.continuing-backdrop {
+  position: fixed; inset: 0; background: rgba(8, 12, 18, 0.94);
+  display: flex; align-items: center; justify-content: center; z-index: 60; cursor: pointer;
+}
+.continuing { width: min(500px, 92vw); text-align: center; padding: 32px; }
+.continuing-date { font-size: 30px; font-weight: 700; letter-spacing: 1px; }
+.continuing-bar { height: 4px; background: #243242; border-radius: 2px; margin: 18px 0 14px; overflow: hidden; }
+.continuing-fill { height: 100%; background: var(--accent); transition: width 0.4s ease; }
+.continuing-list { max-height: 42vh; overflow-y: auto; text-align: left; display: flex; flex-direction: column; gap: 6px; }
+.continuing-item { display: flex; gap: 10px; font-size: 13px; padding: 7px 11px; background: rgba(255,255,255,0.04); border-radius: 5px; animation: continuingFade 0.3s ease; }
+.continuing-item .kind { color: var(--accent); text-transform: uppercase; font-size: 10px; letter-spacing: 1px; white-space: nowrap; padding-top: 2px; flex-shrink: 0; }
+.continuing-item .headline { color: var(--text); }
+.continuing-hint { margin-top: 18px; font-size: 11px; color: var(--text-dim); }
+@keyframes continuingFade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
