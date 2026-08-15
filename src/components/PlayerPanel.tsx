@@ -1,6 +1,6 @@
-import { moraleLabel } from "../game/career";
+import { CAT_ATTRS, moraleLabel } from "../game/career";
 import { formatMoney, formatWage } from "../game/format";
-import type { Contract, Player, PlayerAttrs, PlayerState } from "../game/types";
+import type { Category, Contract, Personality, Player, PlayerAttrs, PlayerState } from "../game/types";
 import { CategoryBadge, RatingDots } from "./ui";
 
 const TRAINABLE: [keyof PlayerAttrs, string][] = [
@@ -46,15 +46,23 @@ const GROUPS: { title: string; keys: (keyof Player["attrs"])[] }[] = [
   },
 ];
 
-function AttrBar({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="attr-row">
-      <span className="label">{label}</span>
-      <span className="bar"><span className="fill" style={{ width: `${Math.max(5, value * 5)}%` }} /></span>
-      <span className="num">{value}</span>
-    </div>
-  );
-}
+const POSITION_GROUPS: Record<Category, string[]> = {
+  GK: ["GK"],
+  DF: ["CB", "LB", "RB", "LWB", "RWB"],
+  MF: ["CDM", "CM", "CAM", "LM", "RM"],
+  FW: ["ST", "CF", "LW", "RW"],
+};
+
+const PERSONALITY_LABELS: [keyof Personality, string][] = [
+  ["professionalism", "Professionalism"],
+  ["ambition", "Ambition"],
+  ["determination", "Determination"],
+  ["consistency", "Consistency"],
+  ["pressure", "Pressure"],
+  ["bigMatches", "Big Matches"],
+  ["injuryProneness", "Injury Proneness"],
+  ["adaptability", "Adaptability"],
+];
 
 function PctBar({ label, value }: { label: string; value: number }) {
   const pct = Math.max(0, Math.min(100, value));
@@ -68,25 +76,45 @@ function PctBar({ label, value }: { label: string; value: number }) {
 }
 
 function StatusTag({ state }: { state: PlayerState }) {
-  if (state.injured || state.injuryDaysLeft > 0) {
-    return <span className="badge-flag injured">Injured · {state.injuryDaysLeft}d</span>;
-  }
-  if (state.suspended > 0) {
-    return <span className="badge-flag suspended">Suspended · {state.suspended} match</span>;
-  }
+  if (state.injured || state.injuryDaysLeft > 0) return <span className="badge-flag injured">Injured · {state.injuryDaysLeft}d</span>;
+  if (state.suspended > 0) return <span className="badge-flag suspended">Suspended · {state.suspended} match</span>;
   return null;
 }
 
-const PERSONALITY_LABELS: [keyof Player["personality"], string][] = [
-  ["consistency", "Consistency"],
-  ["ambition", "Ambition"],
-  ["professionalism", "Professionalism"],
-  ["determination", "Determination"],
-  ["pressure", "Pressure"],
-  ["bigMatches", "Big Matches"],
-  ["injuryProneness", "Injury Proneness"],
-  ["adaptability", "Adaptability"],
-];
+function fmtAttr(k: string): string {
+  return k.replace(/([A-Z])/g, " $1").replace(/^./, (c) => c.toUpperCase());
+}
+
+function attrClass(v: number): string {
+  if (v >= 16) return "attr-elite";
+  if (v >= 13) return "attr-good";
+  if (v >= 10) return "attr-avg";
+  return "attr-low";
+}
+
+function positionFamiliarity(p: Player): { pos: string; level: "Natural" | "Accomplished" | "Competent" }[] {
+  const list: { pos: string; level: "Natural" | "Accomplished" | "Competent" }[] = [{ pos: p.position, level: "Natural" }];
+  for (const pos of p.altPositions) list.push({ pos, level: "Accomplished" });
+  for (const pos of POSITION_GROUPS[p.category] ?? []) {
+    if (pos !== p.position && !p.altPositions.includes(pos)) list.push({ pos, level: "Competent" });
+  }
+  return list;
+}
+
+function personalitySummary(p: Personality): string {
+  const traits: string[] = [];
+  if (p.professionalism >= 15) traits.push("professional");
+  else if (p.professionalism <= 6) traits.push("unprofessional");
+  if (p.ambition >= 15) traits.push("ambitious");
+  if (p.determination >= 15) traits.push("determined");
+  else if (p.determination <= 6) traits.push("easy-going");
+  if (p.consistency >= 15) traits.push("consistent");
+  else if (p.consistency <= 6) traits.push("inconsistent");
+  if (p.pressure >= 15) traits.push("composed under pressure");
+  if (p.bigMatches >= 15) traits.push("a big-game player");
+  if (traits.length === 0) return "A well-balanced, dependable character.";
+  return traits.slice(0, 3).join(", ").replace(/^./, (c) => c.toUpperCase()) + ".";
+}
 
 export function PlayerPanel({ player, state, onSetTraining, contract, seasonYear, onRenew, happiness, onInteract }: {
   player: Player;
@@ -100,36 +128,57 @@ export function PlayerPanel({ player, state, onSetTraining, contract, seasonYear
 }) {
   const isGK = player.category === "GK";
   const groups = isGK ? GROUPS : GROUPS.filter((g) => g.title !== "Goalkeeping");
+  const keyAttrs = CAT_ATTRS[player.category] ?? [];
+  const positions = positionFamiliarity(player);
   const trainable = TRAINABLE.filter(([k]) =>
     isGK ? GK_TRAIN_KEYS.has(k) || ["acceleration", "stamina", "strength"].includes(k) : !GK_TRAIN_KEYS.has(k),
   );
+
   return (
     <div>
-      <div className="section-head" style={{ marginBottom: 8 }}>
+      <div className="section-head" style={{ marginBottom: 12 }}>
         <div>
-          <div style={{ fontSize: 18, fontWeight: 700 }}>
+          <div style={{ fontSize: 20, fontWeight: 700 }}>
             {player.name} <CategoryBadge cat={player.category} />
           </div>
           <div className="muted small">
-            {player.nation ?? ""} · Age {player.age} · {player.position}
-            {player.altPositions.length ? ` (alt: ${player.altPositions.join(", ")})` : ""}
+            {player.nation ?? ""} · Age {player.age}
           </div>
         </div>
         {state && <StatusTag state={state} />}
       </div>
 
-      <div className="grid cols-3" style={{ marginBottom: 16 }}>
-        <div className="kpi"><div className="stat"><span className="k">Value</span><span className="v">{formatMoney(player.value)}</span></div></div>
-        <div className="kpi"><div className="stat"><span className="k">Wage</span><span className="v" style={{ fontSize: 16 }}>{formatWage(player.wage)}</span></div></div>
-        <div className="kpi"><div className="stat"><span className="k">Height / Weight</span><span className="v" style={{ fontSize: 16 }}>{player.height ? `${player.height} cm` : "—"} · {player.weight ? `${player.weight} kg` : "—"}</span></div></div>
+      <div className="profile-strip">
+        <div className="cell"><div className="k">Height</div><div className="v">{player.height ? `${player.height} cm` : "—"}</div></div>
+        <div className="cell"><div className="k">Weight</div><div className="v">{player.weight ? `${player.weight} kg` : "—"}</div></div>
+        <div className="cell"><div className="k">Foot</div><div className="v" style={{ textTransform: "capitalize" }}>{player.foot ?? "—"}</div></div>
+        <div className="cell"><div className="k">Weak foot</div><div className="v">{player.weakFoot}★</div></div>
+        <div className="cell"><div className="k">Value</div><div className="v">{formatMoney(player.value)}</div></div>
+        <div className="cell"><div className="k">Wage</div><div className="v" style={{ fontSize: 13 }}>{formatWage(player.wage)}</div></div>
+        <div className="cell"><div className="k">Current ability</div><div className="v">{player.ca}</div></div>
+        <div className="cell"><div className="k">Potential</div><div className="v">{player.pa}</div></div>
       </div>
 
-      <div className="grid cols-2" style={{ marginBottom: 16 }}>
-        <div className="kpi"><div className="stat"><span className="k">Current ability</span><span className="v">{player.ca}</span></div></div>
-        <div className="kpi"><div className="stat"><span className="k">Potential</span><span className="v">{player.pa}</span></div></div>
-        <div className="kpi"><div className="stat"><span className="k">Preferred foot</span><span className="v" style={{ fontSize: 16, textTransform: "capitalize" }}>{player.foot ?? "—"}</span></div></div>
-        <div className="kpi"><div className="stat"><span className="k">Weak foot / Skill moves</span><span className="v" style={{ fontSize: 16 }}>{player.weakFoot}★ / {player.skillMoves}★</span></div></div>
+      <div className="panel-title" style={{ marginBottom: 6 }}>Positions</div>
+      <div className="pos-list">
+        {positions.map((p) => (
+          <span key={p.pos} className={`pos-chip ${p.level.toLowerCase()}`}>{p.pos} <small>{p.level}</small></span>
+        ))}
       </div>
+
+      {groups.map((g) => (
+        <div key={g.title} style={{ marginBottom: 4 }}>
+          <div className="panel-title" style={{ marginBottom: 6 }}>{g.title}</div>
+          <div className="attr-grid">
+            {g.keys.map((k) => (
+              <div key={k} className={`attr-cell ${keyAttrs.includes(k) ? "key" : ""}`}>
+                <span className="name">{fmtAttr(k)}</span>
+                <span className={`val ${attrClass(player.attrs[k])}`}>{player.attrs[k]}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
 
       {state && onSetTraining && (
         <div style={{ marginBottom: 16 }}>
@@ -138,7 +187,6 @@ export function PlayerPanel({ player, state, onSetTraining, contract, seasonYear
             <option value="">Balanced</option>
             {trainable.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
           </select>
-          <div className="small muted" style={{ marginTop: 4 }}>Focused attributes grow faster at the end of the season.</div>
         </div>
       )}
 
@@ -159,7 +207,11 @@ export function PlayerPanel({ player, state, onSetTraining, contract, seasonYear
           <PctBar label="Condition" value={state.condition} />
           <PctBar label="Match sharpness" value={state.matchSharpness} />
           <PctBar label="Fitness" value={state.fitness} />
-          <AttrBar label={`Morale (${state ? moraleLabel(state.morale) : "—"})`} value={state.morale} />
+          <div className="attr-row">
+            <span className="label">Morale ({moraleLabel(state.morale)})</span>
+            <span className="bar"><span className="fill" style={{ width: `${state.morale * 5}%` }} /></span>
+            <span className="num">{state.morale}</span>
+          </div>
           <div className="small muted" style={{ marginTop: 4, display: "flex", alignItems: "center", gap: 6 }}>
             Form: <RatingDots form={state.form} />
             {state.yellowCards > 0 && <> · {state.yellowCards} yellow cards this season</>}
@@ -181,16 +233,17 @@ export function PlayerPanel({ player, state, onSetTraining, contract, seasonYear
         </div>
       )}
 
-      {groups.map((g) => (
-        <div key={g.title} style={{ marginBottom: 12 }}>
-          <div className="panel-title" style={{ marginBottom: 6 }}>{g.title}</div>
-          {g.keys.map((k) => <AttrBar key={k} label={k} value={player.attrs[k]} />)}
-        </div>
-      ))}
-
-      <div style={{ marginBottom: 12 }}>
+      <div style={{ marginBottom: 8 }}>
         <div className="panel-title" style={{ marginBottom: 6 }}>Personality</div>
-        {PERSONALITY_LABELS.map(([k, label]) => <AttrBar key={k} label={label} value={player.personality[k]} />)}
+        <div className="personality-summary">{personalitySummary(player.personality)}</div>
+        <div className="trait-grid">
+          {PERSONALITY_LABELS.map(([k, label]) => (
+            <div key={k} className="attr-cell">
+              <span className="name">{label}</span>
+              <span className="val attr-avg">{player.personality[k]}</span>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );

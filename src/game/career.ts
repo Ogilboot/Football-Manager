@@ -690,7 +690,7 @@ export function releasePlayer(state: CareerState, playerId: number): TransferOut
 
 // ---- season rollover ------------------------------------------------------
 
-const CAT_ATTRS: Record<Category, (keyof PlayerAttrs)[]> = {
+export const CAT_ATTRS: Record<Category, (keyof PlayerAttrs)[]> = {
   FW: ["finishing", "offTheBall", "composure", "longShots", "acceleration", "pace", "dribbling", "heading"],
   MF: ["passing", "vision", "firstTouch", "technique", "composure", "stamina", "creativity"],
   DF: ["tackling", "marking", "positioning", "heading", "strength", "jumping", "anticipation"],
