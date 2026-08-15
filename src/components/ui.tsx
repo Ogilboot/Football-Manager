@@ -40,16 +40,24 @@ export function RatingDots({ form }: { form: number[] }) {
   );
 }
 
+function starValue(ability: number): number {
+  return Math.max(0.5, Math.min(5, Math.round(ability / 20) / 2));
+}
+
 export function AbilityStars({ ca, pa }: { ca: number; pa: number }) {
-  const caStars = Math.max(1, Math.min(5, Math.round(ca / 40)));
-  const paStars = Math.max(1, Math.min(5, Math.round(pa / 40)));
-  return (
-    <span className="ability-stars" title={`Current ability ${ca} · Potential ${pa}`}>
-      {[1, 2, 3, 4, 5].map((i) => (
-        <span key={i} className={i <= caStars ? "gold" : i <= paStars ? "pot" : "dim"}>
-          {i <= caStars ? "★" : "☆"}
-        </span>
-      ))}
-    </span>
-  );
+  const gold = starValue(ca);
+  const pot = starValue(pa);
+  const slots = [];
+  for (let i = 1; i <= 5; i++) {
+    const goldHere = Math.min(1, Math.max(0, gold - (i - 1)));
+    const potHere = Math.min(1, Math.max(0, pot - (i - 1)));
+    let cls = "dim";
+    let ch = "☆";
+    if (goldHere >= 1) { cls = "gold"; ch = "★"; }
+    else if (goldHere > 0) { cls = "half"; ch = "★"; }
+    else if (potHere >= 1) { cls = "pot"; ch = "★"; }
+    else if (potHere > 0) { cls = "pothalf"; ch = "★"; }
+    slots.push(<span key={i} className={`star ${cls}`}>{ch}</span>);
+  }
+  return <span className="ability-stars" title={`Current ability ${ca} · Potential ${pa}`}>{slots}</span>;
 }

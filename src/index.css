@@ -342,9 +342,22 @@ td.dim { color: var(--text-dim); }
 .form-dot.L { background: #e5533d; }
 
 .ability-stars { white-space: nowrap; letter-spacing: 1px; }
+.ability-stars .star { display: inline-block; }
 .ability-stars .gold { color: #f0c75e; }
 .ability-stars .pot { color: #8b98a9; }
 .ability-stars .dim { color: #3a4a5c; }
+.ability-stars .half {
+  background: linear-gradient(90deg, #f0c75e 50%, #8b98a9 50%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.ability-stars .pothalf {
+  background: linear-gradient(90deg, #8b98a9 50%, #3a4a5c 50%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
 
 .page-head { margin-bottom: 16px; }
 .page-head h2 { margin: 0 0 2px; font-size: 18px; color: #fff; }
